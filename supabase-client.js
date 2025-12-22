@@ -13,4 +13,4 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
  * This is the recommended pattern and makes the initialized client available to all
  * subsequent scripts.
  */
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
