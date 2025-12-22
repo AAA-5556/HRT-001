@@ -1,8 +1,8 @@
 // supabase-client.js
 
 // These are the real credentials for the user's Supabase project.
-const SUPABASE_URL = 'https://krrxpljixdorkwcqtglc.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtycnhwbGppeGRvcmt3Y3F0Z2xjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTU4NDEwMjAsImV4cCI6MjAzMTQxNzAyMH0.09-v4i2ceD6WjN2C-VBnO2YtD3y-y5B-F1I2u22-9-Q';
+const SUPABASE_URL = 'https://ndkclrxdkbclesxiyntk.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ka2Nscnhka2JjbGVzeGl5bnRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzNzQ3MDQsImV4cCI6MjA4MTk1MDcwNH0.7UdAqUu1FRp-cSaIA1Q-xO89-OPaFE2CVSESnkLaHdE';
 
 /**
  * Creates a new Supabase client instance.
