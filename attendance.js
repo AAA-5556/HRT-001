@@ -1,14 +1,39 @@
-document.addEventListener('DOMContentLoaded', () => {
-    // ❗ مهم: لینک API خود را اینجا قرار دهید
-    const API_URL = "https://script.google.com/macros/s/AKfycbyFhhTg_2xf6TqTBdybO883H4f6562sTDUSY8dbQJyN2K-nmFVD7ViTgWllEPwOaf7V/exec";
+document.addEventListener('DOMContentLoaded', async () => {
+    // --- کد نگهبان جدید با استفاده از Supabase ---
+    async function checkAuthAndRole() {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error || !session) {
+            window.location.href = 'index.html';
+            return null;
+        }
 
-    // --- ۱. کد نگهبان و بررسی هویت ---
-    const userData = JSON.parse(localStorage.getItem('userData'));
-    if (!userData || !userData.token || userData.role !== 'institute') {
-        localStorage.removeItem('userData');
-        window.location.href = 'index.html';
-        return;
+        const user = session.user;
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('role, username, institution_id')
+            .eq('id', user.id)
+            .single();
+
+        if (profileError || !profile) {
+            console.error('خطا در دریافت پروفایل:', profileError);
+            await supabase.auth.signOut();
+            window.location.href = 'index.html';
+            return null;
+        }
+
+        if (profile.role !== 'institute' || !profile.institution_id) {
+            await supabase.auth.signOut();
+            window.location.href = 'index.html';
+            return null;
+        }
+
+        return { user, profile };
     }
+
+    const authData = await checkAuthAndRole();
+    if (!authData) return;
+
+    const { user: currentUser, profile: userProfile } = authData;
 
     // --- شناسایی عناصر عمومی ---
     const instituteNameEl = document.getElementById('institute-name');
@@ -20,42 +45,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- متغیرهای عمومی ---
     let membersMap = {}; 
     let historyInitialized = false;
-
-    // --- تابع کمکی برای تماس با API ---
-    async function apiCall(action, payload) {
-        try {
-            const token = JSON.parse(localStorage.getItem('userData')).token;
-            if (!token) {
-                localStorage.removeItem('userData');
-                window.location.href = 'index.html';
-                return;
-            }
-            
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action, payload, token })
-            });
-            const result = await response.json();
-            
-            if (result.status === 'error' && (result.message.includes('منقضی') || result.message.includes('نامعتبر'))) {
-                alert(result.message);
-                localStorage.removeItem('userData');
-                window.location.href = 'index.html';
-            }
-            return result;
-        } catch (error) {
-            console.error('API Call Error:', error);
-            return { status: 'error', message: 'خطا در ارتباط با سرور.' };
-        }
-    }
     
     // =================================================================
     // بخش ۱: راه‌اندازی اولیه صفحه
     // =================================================================
     function initializePage() {
-        instituteNameEl.textContent = `پنل موسسه (${userData.username})`;
-        logoutButton.addEventListener('click', () => {
-            localStorage.removeItem('userData');
+        instituteNameEl.textContent = `پنل موسسه (${userProfile.username})`;
+        logoutButton.addEventListener('click', async () => {
+            await supabase.auth.signOut();
             window.location.href = 'index.html';
         });
 
@@ -67,26 +64,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function checkPermissions() {
-        const result = await apiCall('getSettings', {});
-        if (result.status === 'success') {
-            const settings = result.data;
-            let canDoSomething = false;
-            if (settings.allowMemberManagement === true) {
-                const manageMembersLink = document.getElementById('manage-members-link');
-                manageMembersLink.style.display = 'block';
-                manageMembersLink.href = `manage-members.html?id=${userData.institutionId}&name=${encodeURIComponent(userData.username)}`;
-                canDoSomething = true;
-            }
-            if (settings.allowUsernameChange === true || settings.allowPasswordChange === true) {
-                const changeCredentialsBtn = document.getElementById('change-credentials-btn');
-                changeCredentialsBtn.style.display = 'block';
-                document.getElementById('change-username').disabled = !settings.allowUsernameChange;
-                document.getElementById('change-password').disabled = !settings.allowPasswordChange;
-                canDoSomething = true;
-            }
-            if(canDoSomething) {
-                instMenuContainer.style.display = 'block';
-            }
+        // از تابع هوشمند برای دریافت تنظیمات استفاده می‌کنیم
+        const { data: canManage, error: manageError } = await supabase.rpc('get_setting_value', { p_user_id: currentUser.id, p_key: 'allowMemberManagement' });
+        const { data: canChangePass, error: passError } = await supabase.rpc('get_setting_value', { p_user_id: currentUser.id, p_key: 'allowPasswordChange' });
+
+        let canDoSomething = false;
+        if (canManage === true) {
+            const manageMembersLink = document.getElementById('manage-members-link');
+            manageMembersLink.style.display = 'block';
+            manageMembersLink.href = `manage-members.html?id=${userProfile.institution_id}&name=${encodeURIComponent(userProfile.username)}`;
+            canDoSomething = true;
+        }
+        if (canChangePass === true) {
+            const changeCredentialsBtn = document.getElementById('change-credentials-btn');
+            changeCredentialsBtn.style.display = 'block';
+            document.getElementById('change-username').disabled = true;
+            document.getElementById('change-username').placeholder = 'تغییر نام کاربری غیرفعال است';
+            document.getElementById('change-password').disabled = false;
+            canDoSomething = true;
+        }
+        if (canDoSomething) {
+            instMenuContainer.style.display = 'block';
         }
     }
 
@@ -120,24 +118,27 @@ document.addEventListener('DOMContentLoaded', () => {
             changeCredentialsForm.reset();
         });
         document.querySelectorAll('.cancel-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                changeCredentialsModal.style.display = 'none';
-            });
+            btn.addEventListener('click', () => { changeCredentialsModal.style.display = 'none'; });
         });
         changeCredentialsForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const newUsername = document.getElementById('change-username').value.trim();
             const newPassword = document.getElementById('change-password').value.trim();
             const statusEl = document.getElementById('change-creds-status');
-            if (!newUsername && !newPassword) return;
-            const result = await apiCall('changeMyCredentials', { newUsername, newPassword });
-            if (result.status === 'success') {
+            if (!newPassword) return;
+
+            try {
+                const { error } = await supabase.auth.updateUser({ password: newPassword });
+                if (error) throw error;
+
                 statusEl.style.color = 'green';
-                statusEl.textContent = 'اطلاعات با موفقیت تغییر کرد. لطفاً دوباره وارد شوید.';
-                setTimeout(() => { localStorage.removeItem('userData'); window.location.href = 'index.html'; }, 3000);
-            } else {
+                statusEl.textContent = 'رمز عبور با موفقیت تغییر کرد. لطفاً دوباره وارد شوید.';
+                setTimeout(async () => {
+                    await supabase.auth.signOut();
+                    window.location.href = 'index.html';
+                }, 3000);
+            } catch (error) {
                 statusEl.style.color = 'red';
-                statusEl.textContent = result.message;
+                statusEl.textContent = `خطا: ${error.message}`;
             }
         });
     }
@@ -163,34 +164,42 @@ document.addEventListener('DOMContentLoaded', () => {
         currentDateEl.textContent = new Date().toLocaleDateString('fa-IR');
         memberListBody.innerHTML = '<tr><td colspan="3">در حال بارگذاری...</td></tr>'; 
         
-        const [membersResult, todaysAttendanceResult] = await Promise.all([ 
-            apiCall('getMembers', {}), 
-            apiCall('getTodaysAttendance', {}) 
-        ]); 
-        
-        if (membersResult.status !== 'success') { memberListBody.innerHTML = '<tr><td colspan="3">خطا در دریافت لیست اعضا.</td></tr>'; return; } 
-        
-        const members = membersResult.data; 
-        members.forEach(m => membersMap[m.memberId] = m); // ذخیره اطلاعات کامل عضو
-        let todaysAttendance = {}; 
-        if (todaysAttendanceResult.status === 'success') { todaysAttendanceResult.data.forEach(r => { todaysAttendance[r.memberId] = r.status; });} 
-        
-        memberListBody.innerHTML = ''; 
-        if (members.length === 0) { memberListBody.innerHTML = `<tr><td colspan="3">هیچ عضو فعالی یافت نشد.</td></tr>`; return; } 
-        
-        members.forEach(member => { 
-            const previousStatus = todaysAttendance[member.memberId]; 
-            const isPresentChecked = previousStatus === 'حاضر' ? 'checked' : ''; 
-            const isAbsentChecked = previousStatus === 'غایب' ? 'checked' : ''; 
-            const row = document.createElement('tr'); 
-            row.innerHTML = `
-                <td>${member.fullName}</td>
-                <td>${member.nationalId}</td>
-                <td><input type="radio" id="present-${member.memberId}" name="status-${member.memberId}" value="حاضر" ${isPresentChecked} required><label for="present-${member.memberId}">حاضر</label><input type="radio" id="absent-${member.memberId}" name="status-${member.memberId}" value="غایب" ${isAbsentChecked}><label for="absent-${member.memberId}">غایب</label></td>
-            `; 
-            row.dataset.memberId = member.memberId; 
-            memberListBody.appendChild(row); 
-        }); 
+        try {
+            const { data: members, error: membersError } = await supabase
+                .from('members')
+                .select('id, full_name, national_id')
+                .eq('institution_id', userProfile.institution_id)
+                .eq('is_active', true);
+            if (membersError) throw membersError;
+
+            const today = new Date().toISOString().split('T')[0];
+            const { data: todaysAttendanceRaw, error: attendanceError } = await supabase
+                .from('attendance')
+                .select('member_id, status')
+                .eq('institution_id', userProfile.institution_id)
+                .eq('date', today);
+            if (attendanceError) throw attendanceError;
+
+            members.forEach(m => membersMap[m.id] = m);
+            const todaysAttendance = todaysAttendanceRaw.reduce((acc, record) => { acc[record.member_id] = record.status; return acc; }, {});
+
+            memberListBody.innerHTML = '';
+            if (members.length === 0) { memberListBody.innerHTML = `<tr><td colspan="3">هیچ عضو فعالی یافت نشد.</td></tr>`; return; }
+
+            members.forEach(member => {
+                const row = document.createElement('tr');
+                row.dataset.memberId = member.id;
+                const previousStatus = todaysAttendance[member.id];
+                row.innerHTML = `
+                    <td>${member.full_name}</td>
+                    <td>${member.national_id || ''}</td>
+                    <td><input type="radio" id="present-${member.id}" name="status-${member.id}" value="حاضر" ${previousStatus === 'حاضر' ? 'checked' : ''} required><label for="present-${member.id}">حاضر</label><input type="radio" id="absent-${member.id}" name="status-${member.id}" value="غایب" ${previousStatus === 'غایب' ? 'checked' : ''}><label for="absent-${member.id}">غایب</label></td>
+                `;
+                memberListBody.appendChild(row);
+            });
+        } catch (error) {
+            memberListBody.innerHTML = `<tr><td colspan="3">خطا در دریافت لیست اعضا: ${error.message}</td></tr>`;
+        }
     }
     
     document.getElementById('attendance-form').addEventListener('submit', async (event) => { 
@@ -198,26 +207,36 @@ document.addEventListener('DOMContentLoaded', () => {
         const saveButton = document.getElementById('submit-attendance');
         const statusMessage = document.getElementById('status-message');
         saveButton.disabled = true; saveButton.textContent = 'در حال ثبت...'; statusMessage.textContent = ''; 
-        const attendanceData = []; 
+
         const rows = document.getElementById('member-list-body').querySelectorAll('tr'); 
-        rows.forEach(row => { 
-            const memberId = row.dataset.memberId; 
-            const checkedRadio = row.querySelector('input[type="radio"]:checked'); 
-            if (memberId && checkedRadio) { attendanceData.push({ memberId: memberId, status: checkedRadio.value }); } 
-        }); 
-        if (rows.length > 0 && attendanceData.length !== rows.length) { 
+        if (rows.length === 0) { saveButton.disabled = false; return; }
+        const attendanceData = Array.from(rows).map(row => {
+            const memberId = row.dataset.memberId;
+            const checkedRadio = row.querySelector('input[type="radio"]:checked');
+            return {
+                member_id: memberId,
+                status: checkedRadio ? checkedRadio.value : null,
+                institution_id: userProfile.institution_id,
+                date: new Date().toISOString().split('T')[0],
+                recorded_by: currentUser.id
+            };
+        }).filter(d => d.status); // فقط رکوردهایی که وضعیت دارند را ارسال کن
+
+        if (attendanceData.length !== rows.length) {
             statusMessage.textContent = 'لطفاً وضعیت تمام اعضا را مشخص کنید.'; 
             saveButton.disabled = false; saveButton.textContent = 'ثبت نهایی'; 
             return; 
         } 
-        const result = await apiCall('saveAttendance', { data: attendanceData });
-        if (result.status === 'success') { 
+
+        try {
+            const { error } = await supabase.from('attendance').upsert(attendanceData, { onConflict: 'institution_id, member_id, date' });
+            if (error) throw error;
             statusMessage.style.color = 'green'; 
             statusMessage.textContent = 'حضور و غیاب با موفقیت به‌روزرسانی شد!'; 
             saveButton.textContent = 'ثبت شد'; 
-        } else { 
+        } catch (error) {
             statusMessage.style.color = '#d93025'; 
-            statusMessage.textContent = result.message || 'خطا در ثبت اطلاعات.'; 
+            statusMessage.textContent = `خطا در ثبت اطلاعات: ${error.message}`;
             saveButton.disabled = false; saveButton.textContent = 'ثبت نهایی'; 
         } 
     });
@@ -234,30 +253,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const historyPaginationContainer = document.getElementById('history-pagination-container');
 
         function renderHistoryPage() {
-            let filteredHistory = [...fullHistory];
-            if (currentHistoryFilters.status !== 'all') {
-                filteredHistory = filteredHistory.filter(r => r.status === currentHistoryFilters.status);
-            }
+            let filteredHistory = fullHistory.filter(r => currentHistoryFilters.status === 'all' || r.status === currentHistoryFilters.status);
             const totalPages = Math.ceil(filteredHistory.length / HISTORY_ITEMS_PER_PAGE);
             currentHistoryPage = Math.min(currentHistoryPage, totalPages || 1);
-            const startIndex = (currentHistoryPage - 1) * HISTORY_ITEMS_PER_PAGE;
-            const pageRecords = filteredHistory.slice(startIndex, startIndex + HISTORY_ITEMS_PER_PAGE);
+            const pageRecords = filteredHistory.slice((currentHistoryPage - 1) * HISTORY_ITEMS_PER_PAGE, currentHistoryPage * HISTORY_ITEMS_PER_PAGE);
             renderHistoryTable(pageRecords);
             renderHistoryPagination(totalPages);
         }
 
         function renderHistoryTable(records) {
-            historyTableBody.innerHTML = ''; let lastDate = null; if (records.length === 0) { historyTableBody.innerHTML = '<tr><td colspan="4">سابقه‌ای یافت نشد.</td></tr>'; return; }
+            historyTableBody.innerHTML = records.length === 0 ? '<tr><td colspan="4">سابقه‌ای یافت نشد.</td></tr>' : '';
+            let lastDate = null;
             records.forEach(record => {
-                const recordDate = record.date.split(/,|،/)[0].trim();
-                if (recordDate !== lastDate) { const dateRow = document.createElement('tr'); dateRow.innerHTML = `<td colspan="4" class="date-group-header">تاریخ: ${recordDate}</td>`; historyTableBody.appendChild(dateRow); lastDate = recordDate; }
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${record.date}</td>
-                    <td>${record.fullName}</td>
-                    <td>${record.nationalId}</td>
-                    <td>${record.status}</td>`;
-                historyTableBody.appendChild(row);
+                const recordDate = new Date(record.recorded_at).toLocaleDateString('fa-IR');
+                if (recordDate !== lastDate) {
+                    historyTableBody.innerHTML += `<tr class="date-group-header"><td colspan="4">تاریخ: ${recordDate}</td></tr>`;
+                    lastDate = recordDate;
+                }
+                historyTableBody.innerHTML += `
+                    <tr>
+                        <td>${new Date(record.recorded_at).toLocaleString('fa-IR')}</td>
+                        <td>${record.members.full_name}</td>
+                        <td>${record.members.national_id || ''}</td>
+                        <td>${record.status}</td>
+                    </tr>`;
             });
         }
 
@@ -311,12 +330,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         async function fetchHistory() {
             historyTableBody.innerHTML = '<tr><td colspan="4">در حال بارگذاری تاریخچه...</td></tr>';
-            const result = await apiCall('getInstitutionHistory', {});
-            if (result.status === 'success') {
-                fullHistory = result.data;
+            try {
+                const { data, error } = await supabase
+                    .from('attendance')
+                    .select('*, members(full_name, national_id)')
+                    .eq('institution_id', userProfile.institution_id)
+                    .order('recorded_at', { ascending: false });
+                if (error) throw error;
+                fullHistory = data;
                 renderHistoryPage();
-            } else {
-                 historyTableBody.innerHTML = `<tr><td colspan="4">خطا در بارگذاری تاریخچه.</td></tr>`;
+            } catch (error) {
+                 historyTableBody.innerHTML = `<tr><td colspan="4">خطا در بارگذاری تاریخچه: ${error.message}</td></tr>`;
             }
         }
         
@@ -331,19 +355,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         document.getElementById('export-history-excel').addEventListener('click', () => { 
-            let filteredHistory = [...fullHistory]; 
-            if (currentHistoryFilters.status !== 'all') { filteredHistory = filteredHistory.filter(r => r.status === currentHistoryFilters.status); } 
-            if (filteredHistory.length === 0) { alert('داده‌ای برای خروجی گرفتن وجود ندارد.'); return; } 
-            const dataToExport = filteredHistory.map(record => ({ 
-                "تاریخ و زمان": record.date, 
-                "نام عضو": record.fullName,
-                "کد ملی": record.nationalId,
-                "وضعیت": record.status 
-            })); 
+            let dataToExport = fullHistory
+                .filter(r => currentHistoryFilters.status === 'all' || r.status === currentHistoryFilters.status)
+                .map(record => ({
+                    "تاریخ و زمان": new Date(record.recorded_at).toLocaleString('fa-IR'),
+                    "نام عضو": record.members.full_name,
+                    "کد ملی": record.members.national_id,
+                    "وضعیت": record.status
+                }));
+            if (dataToExport.length === 0) { alert('داده‌ای برای خروجی گرفتن وجود ندارد.'); return; }
             const worksheet = XLSX.utils.json_to_sheet(dataToExport); 
             const workbook = XLSX.utils.book_new(); 
             XLSX.utils.book_append_sheet(workbook, worksheet, "تاریخچه حضور و غیاب"); 
-            XLSX.writeFile(workbook, `History_${userData.username}.xlsx`); 
+            XLSX.writeFile(workbook, `History_${userProfile.username}.xlsx`);
         });
 
         fetchHistory();
