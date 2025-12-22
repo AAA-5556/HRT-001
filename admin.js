@@ -21,9 +21,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             return null;
         }
 
+        const impersonatedRole = localStorage.getItem('impersonatedUserRole');
+        const effectiveRole = impersonatedRole || profile.role;
+
         const allowedRoles = ['admin', 'superadmin', 'root'];
-        if (!allowedRoles.includes(profile.role)) {
-            await supabase.auth.signOut();
+        if (!allowedRoles.includes(effectiveRole)) {
+            alert('Access denied.');
+            if(impersonatedRole) stopImpersonation();
+            else await supabase.auth.signOut();
             window.location.href = 'index.html';
             return null;
         }
@@ -75,12 +80,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const memberProfileCard = document.getElementById('member-profile-card');
     const editUserModal = document.getElementById('edit-user-modal');
     const editUserForm = document.getElementById('edit-user-form');
-    const addInstitutionModal = document.getElementById('add-institution-modal');
-    const addInstitutionForm = document.getElementById('add-institution-form');
-    const addInstStatus = document.getElementById('add-inst-status');
+    const addUserModal = document.getElementById('add-user-modal');
+    const addUserForm = document.getElementById('add-user-form');
+    const addUserStatus = document.getElementById('add-user-status');
     const mainMenuButton = document.getElementById('main-menu-button');
     const mainMenuDropdown = document.getElementById('main-menu-dropdown');
-    document.querySelectorAll('.cancel-btn').forEach(btn => { btn.addEventListener('click', () => { editUserModal.style.display = 'none'; addInstitutionModal.style.display = 'none'; }); });
+    document.querySelectorAll('.cancel-btn').forEach(btn => { btn.addEventListener('click', () => { editUserModal.style.display = 'none'; addUserModal.style.display = 'none'; }); });
 
     // --- متغیرهای وضعیت ---
     let allRecords = []; 
@@ -113,8 +118,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         dashboardContainer.appendChild(adminCard);
         const addCard = document.createElement('div');
         addCard.className = 'stat-card add-inst-card';
-        addCard.innerHTML = `<h3>افزودن موسسه</h3><div class="plus-sign">+</div>`;
-        addCard.addEventListener('click', () => { addInstitutionForm.reset(); addInstStatus.textContent = ''; addInstitutionModal.style.display = 'flex'; });
+        addCard.innerHTML = `<h3>افزودن کاربر جدید</h3><div class="plus-sign">+</div>`;
+        addCard.addEventListener('click', () => { addUserForm.reset(); addUserStatus.textContent = ''; addUserModal.style.display = 'flex'; });
         dashboardContainer.appendChild(addCard);
         populateFilters();
     }
@@ -210,43 +215,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         mainMenuButton.addEventListener('click', () => { mainMenuDropdown.style.display = mainMenuDropdown.style.display === 'block' ? 'none' : 'block'; });
 
-        addInstitutionForm.addEventListener('submit', async (e) => {
+        addUserForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const email = document.getElementById('new-inst-username').value.trim();
-            const password = document.getElementById('new-inst-password').value.trim();
-            if (!email || !password) return;
+            const username = document.getElementById('new-username').value.trim();
+            const password = document.getElementById('new-password').value.trim();
+            if (!username || !password) return;
 
-            addInstStatus.textContent = 'در حال ایجاد...';
+            addUserStatus.textContent = 'در حال ایجاد کاربر...';
+            addUserStatus.style.color = 'inherit';
+
             try {
-                const { data: authData, error: authError } = await supabase.auth.signUp({ email, password });
-                if (authError) throw authError;
-                if (!authData.user) throw new Error('کاربر ایجاد نشد.');
+                const originalUserId = localStorage.getItem('originalUserId');
+                const { data, error } = await supabase.functions.invoke('create-user', {
+                    body: { username, password, creatorId: currentUser.id, originalUserId }
+                });
+                if (error) throw error;
 
-                const { data: instData, error: instError } = await supabase
-                    .from('institutions')
-                    .insert({ name: email, created_by: currentUser.id })
-                    .select()
-                    .single();
-                if (instError) throw instError;
+                // Log the action if it was done during impersonation
+                await logImpersonatedAction('create_user', { created_username: username, new_role: data.role });
 
-                const { error: profileError } = await supabase
-                    .from('profiles')
-                    .update({
-                        username: email,
-                        role: 'institute',
-                        institution_id: instData.id,
-                        parent_id: currentUser.id
-                    })
-                    .eq('id', authData.user.id);
-                if (profileError) throw profileError;
-
-                addInstStatus.style.color = 'green';
-                addInstStatus.textContent = `موسسه '${email}' با موفقیت ایجاد شد. صفحه در حال بارگذاری مجدد است...`;
+                addUserStatus.style.color = 'green';
+                addUserStatus.textContent = `کاربر '${username}' با نقش '${data.role}' با موفقیت ایجاد شد. صفحه در حال بارگذاری مجدد است...`;
                 setTimeout(() => location.reload(), 2500);
+
             } catch (error) {
-                console.error("خطا در ایجاد موسسه:", error);
-                addInstStatus.style.color = 'red';
-                addInstStatus.textContent = error.message;
+                console.error("خطا در ایجاد کاربر:", error);
+                addUserStatus.style.color = 'red';
+                addUserStatus.textContent = `خطا: ${error.message}`;
             }
         });
         
@@ -318,11 +313,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     .single();
                 if (profileError) throw profileError;
 
-                const { error: functionError } = await supabase.functions.invoke('update-user-password', {
-                    body: { userId: profile.id, newPassword: newPassword }
+                const { error } = await supabase.functions.invoke('update-user-password', {
+                    body: { userId: profile.id, newPassword }
                 });
 
-                if (functionError) throw functionError;
+                if (error) throw error;
 
                 modalStatusMessage.style.color = 'green';
                 modalStatusMessage.textContent = 'رمز عبور با موفقیت به‌روزرسانی شد! صفحه تا ۲ ثانیه دیگر رفرش می‌شود...';
@@ -358,6 +353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // --- بارگذاری اولیه ---
     async function initializeAdminPanel() {
+        initImpersonationUI();
         loadingMessage.textContent = 'در حال بارگذاری...';
         try {
             const { data: institutions, error: instError } = await supabase

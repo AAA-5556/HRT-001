@@ -34,13 +34,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw error || new Error('پروفایل کاربری یافت نشد.');
             }
 
-            const adminRoles = ['admin', 'superadmin', 'root'];
-            if (adminRoles.includes(profile.role)) {
-                window.location.href = 'admin.html';
-            } else if (profile.role === 'institute') {
-                window.location.href = 'attendance.html';
-            } else {
-                errorMessage.textContent = 'نقش کاربری شما تعریف نشده است.';
+            switch (profile.role) {
+                case 'root':
+                    window.location.href = 'root.html';
+                    break;
+                case 'superadmin':
+                    window.location.href = 'superadmin.html';
+                    break;
+                case 'admin':
+                    window.location.href = 'admin.html';
+                    break;
+                case 'institute':
+                    window.location.href = 'attendance.html';
+                    break;
+                default:
+                    errorMessage.textContent = 'نقش کاربری شما تعریف نشده است.';
             }
         } catch (error) {
             errorMessage.textContent = 'خطا در دریافت اطلاعات کاربری.';
