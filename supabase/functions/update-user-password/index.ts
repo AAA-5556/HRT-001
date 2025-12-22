@@ -1,0 +1,35 @@
+// Import necessary libraries
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+serve(async (req) => {
+  try {
+    const { userId, newPassword } = await req.json();
+
+    // Create a Supabase client with the service role key
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
+    // Update the user's password
+    const { error } = await supabaseAdmin.auth.admin.updateUserById(
+      userId,
+      { password: newPassword }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return new Response(JSON.stringify({ message: "Password updated successfully" }), {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { "Content-Type": "application/json" },
+      status: 400,
+    });
+  }
+});
