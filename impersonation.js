@@ -1,38 +1,34 @@
 // This file will be created in a later step. It is here for reference.
-function startImpersonation(targetUserId, targetUsername, targetRole) {
+async function startImpersonation(targetUserId, targetUsername, targetRole) {
     const originalUserId = localStorage.getItem('originalUserId');
-
-    // Prevent nested impersonation
     if (originalUserId) {
         alert('Cannot start a new impersonation session while another is active.');
         return;
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-        if (!session) {
-            alert('Authentication error.');
-            return;
-        }
-        const currentUser = session.user;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+        alert('Authentication error.');
+        return;
+    }
+    const currentUser = session.user;
 
-        supabase.from('profiles').select('role').eq('id', currentUser.id).single().then(({ data: profile }) => {
-            localStorage.setItem('originalUserId', currentUser.id);
-            localStorage.setItem('originalUserRole', profile.role);
-            localStorage.setItem('impersonatedUserId', targetUserId);
-            localStorage.setItem('impersonatedUsername', targetUsername);
-            localStorage.setItem('impersonatedUserRole', targetRole);
+    const { data: profile } = await supabase.from('profiles').select('role').eq('id', currentUser.id).single();
 
-            // Log the event
-            supabase.from('impersonation_log').insert({
-                admin_id: currentUser.id,
-                target_user_id: targetUserId,
-                action: 'start_impersonation'
-            }).then(({ error }) => {
-                if (error) console.error('Failed to log impersonation start:', error);
-            });
+    localStorage.setItem('originalUserId', currentUser.id);
+    localStorage.setItem('originalUserRole', profile.role);
+    localStorage.setItem('impersonatedUserId', targetUserId);
+    localStorage.setItem('impersonatedUsername', targetUsername);
+    localStorage.setItem('impersonatedUserRole', targetRole);
 
-            // Redirect to the appropriate panel
-            if (targetRole === 'superadmin') {
+    const { error } = await supabase.from('impersonation_log').insert({
+        admin_id: currentUser.id,
+        target_user_id: targetUserId,
+        action: 'start_impersonation'
+    });
+    if (error) console.error('Failed to log impersonation start:', error);
+
+    if (targetRole === 'superadmin') {
         window.location.href = 'superadmin.html';
     } else if (targetRole === 'admin') {
         window.location.href = 'admin.html';
