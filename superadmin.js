@@ -76,12 +76,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadingMessage.style.display = 'block';
         adminListBody.innerHTML = '';
         try {
+            const impersonatedUserId = localStorage.getItem('impersonatedUserId');
+            const effectiveUserId = impersonatedUserId || currentUser.id;
+
             // Fetch admins created by the current superadmin
-            const { data: admins, error } = await supabase
-                .from('profiles')
-                .select('id, username, created_at')
-                .eq('role', 'admin')
-                .eq('created_by', currentUser.id);
+            const { data: admins, error } = await supabase.functions.invoke('get-managed-users', {
+                body: { userId: effectiveUserId, targetRole: 'admin' }
+            });
 
             if (error) throw error;
 
@@ -145,8 +146,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         addUserStatus.style.color = 'inherit';
 
         try {
+            const impersonatedUserId = localStorage.getItem('impersonatedUserId');
+            const effectiveCreatorId = impersonatedUserId || currentUser.id;
+
             const { data, error } = await supabase.functions.invoke('create-user', {
-                body: { username, password, creatorId: currentUser.id }
+                body: { username, password, creatorId: effectiveCreatorId }
             });
             if (error) throw error;
 
@@ -177,7 +181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (confirm(`آیا از حذف کاربر '${username}' مطمئن هستید؟ این عمل تمام موسسات زیرمجموعه او را نیز حذف خواهد کرد.`)) {
                 try {
                     const { error } = await supabase.functions.invoke('delete-user', {
-                        body: { userId }
+                        body: { userId, requesterId: currentUser.id }
                     });
                     if (error) throw error;
 
@@ -220,7 +224,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             const { error } = await supabase.functions.invoke('update-user-password', {
-                body: { userId, newPassword }
+                body: { userId, newPassword, requesterId: currentUser.id }
             });
             if (error) throw error;
 

@@ -69,23 +69,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- Functions ---
     async function loadDashboardData() {
         try {
-            const { count: superadminCount, error: saError } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'superadmin');
-            if(saError) throw saError;
-
-            const { count: adminCount, error: aError } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'admin');
-             if(aError) throw aError;
-
-            const { count: institutionCount, error: iError } = await supabase.from('institutions').select('*', { count: 'exact', head: true }).eq('is_active', true);
-             if(iError) throw iError;
-
-            // Note: Active users in the last 7 days requires more complex query or logs. This is a placeholder.
-            const activeUsers = 'N/A';
+            const { data: stats, error } = await supabase.functions.invoke('get-dashboard-stats');
+            if (error) throw error;
 
             dashboardContainer.innerHTML = `
-                <div class="stat-card"><h3>Super Admins</h3><p class="highlight">${superadminCount}</p></div>
-                <div class="stat-card"><h3>Admins</h3><p class="highlight">${adminCount}</p></div>
-                <div class="stat-card"><h3>Institutions</h3><p class="highlight">${institutionCount}</p></div>
-                <div class="stat-card"><h3>Active Users (7d)</h3><p class="highlight">${activeUsers}</p></div>
+                <div class="stat-card"><h3>Super Admins</h3><p class="highlight">${stats.superadminCount}</p></div>
+                <div class="stat-card"><h3>Admins</h3><p class="highlight">${stats.adminCount}</p></div>
+                <div class="stat-card"><h3>Institutions</h3><p class="highlight">${stats.institutionCount}</p></div>
+                <div class="stat-card"><h3>Active Users (7d)</h3><p class="highlight">${stats.activeUsers}</p></div>
             `;
         } catch (error) {
             dashboardContainer.innerHTML = `<p class="error-message">Error loading dashboard: ${error.message}</p>`;
@@ -96,11 +87,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadingMessage.style.display = 'block';
         superadminListBody.innerHTML = '';
         try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('id, username, created_at')
-                .eq('role', 'superadmin');
+            const impersonatedUserId = localStorage.getItem('impersonatedUserId');
+            const effectiveUserId = impersonatedUserId || currentUser.id;
 
+            const { data, error } = await supabase.functions.invoke('get-managed-users', {
+                body: { userId: effectiveUserId, targetRole: 'superadmin' }
+            });
             if (error) throw error;
 
             if (data.length === 0) {
@@ -144,8 +136,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         addUserStatus.style.color = 'inherit';
 
         try {
+            const impersonatedUserId = localStorage.getItem('impersonatedUserId');
+            const effectiveCreatorId = impersonatedUserId || currentUser.id;
+
             const { data, error } = await supabase.functions.invoke('create-user', {
-                body: { username, password, creatorId: currentUser.id }
+                body: { username, password, creatorId: effectiveCreatorId }
             });
             if (error) throw error;
 
@@ -177,7 +172,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (confirm(`آیا از حذف کاربر '${username}' مطمئن هستید؟ این عمل غیرقابل بازگشت است.`)) {
                 try {
                     const { error } = await supabase.functions.invoke('delete-user', {
-                        body: { userId }
+                        body: { userId, requesterId: currentUser.id }
                     });
                     if (error) throw error;
 
@@ -222,7 +217,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         try {
             const { error } = await supabase.functions.invoke('update-user-password', {
-                body: { userId, newPassword }
+                body: { userId, newPassword, requesterId: currentUser.id }
             });
             if (error) throw error;
 
