@@ -1,168 +1,174 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    // ❗ مهم: لینک API خود را اینجا قرار دهید
-    const API_URL = "https://script.google.com/macros/s/AKfycbyFhhTg_2xf6TqTBdybO883H4f6562sTDUSY8dbQJyN2K-nmFVD7ViTgWllEPwOaf7V/exec";
-    
-    // --- ۱. کد نگهبان و بررسی هویت ---
-    const userData = JSON.parse(localStorage.getItem('userData'));
-    if (!userData || !userData.token || userData.role !== 'admin') {
-        localStorage.removeItem('userData');
-        window.location.href = 'index.html';
-        return;
+    // --- ۱. بررسی امنیتی ---
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { window.location.href = 'index.html'; return; }
+
+    // بررسی دسترسی ادمین
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+    const isImpersonating = localStorage.getItem('impersonationActive');
+    const effectiveRole = isImpersonating ? localStorage.getItem('impersonatedRole') : profile.role;
+
+    if (effectiveRole !== 'admin') { 
+        window.location.href = 'index.html'; 
+        return; 
     }
 
-    // --- شناسایی عناصر ---
-    const archiveListView = document.getElementById('archive-list-view');
-    const profileView = document.getElementById('profile-view');
+    // --- ۲. تنظیمات صفحه ---
     const archiveTableBody = document.getElementById('archive-table-body');
     const loadingMessage = document.getElementById('loading-archive');
+    
+    // المان‌های پروفایل (برای مشاهده جزئیات موسسه آرشیو شده)
+    const archiveListView = document.getElementById('archive-list-view');
+    const profileView = document.getElementById('profile-view');
     const backToListBtn = document.getElementById('back-to-list-btn');
-    const profileTitle = document.getElementById('profile-title');
-    const profileCard = document.getElementById('profile-summary-card');
     const profileMembersBody = document.getElementById('profile-members-body');
     const profileHistoryBody = document.getElementById('profile-history-body');
-    const memberProfileCardArchive = document.getElementById('member-profile-card-archive');
-    let allMembers = {};
 
-    // --- تابع کمکی برای تماس با API (با ارسال توکن) ---
-    async function apiCall(action, payload) {
-        try {
-            const token = JSON.parse(localStorage.getItem('userData')).token;
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                body: JSON.stringify({ action, payload, token })
-            });
-            const result = await response.json();
-            if (result.status === 'error' && (result.message.includes('منقضی') || result.message.includes('نامعتبر'))) {
-                alert(result.message);
-                localStorage.removeItem('userData');
-                window.location.href = 'index.html';
-            }
-            return result;
-        } catch (error) {
-            console.error('API Call Error:', error);
-            return { status: 'error', message: 'خطا در ارتباط با سرور.' };
-        }
-    }
-
-    // --- توابع نمایش ---
-    function renderArchiveTable(archivedInstitutions) {
+    // --- ۳. دریافت لیست آرشیو شده‌ها از بک‌اند ---
+    async function loadArchivedInstitutions() {
+        loadingMessage.style.display = 'block';
         archiveTableBody.innerHTML = '';
-        if (archivedInstitutions.length === 0) {
-            archiveTableBody.innerHTML = '<tr><td colspan="4">هیچ موسسه آرشیو شده‌ای یافت نشد.</td></tr>';
+
+        const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
+
+        // فراخوانی تابع get-managed-users (همان تابعی که ۵ دقیقه پیش دیپلوی کردیم)
+        // این تابع همه موسسات را می‌دهد، ما سمت کاربر فیلتر می‌کنیم
+        const { data: institutions, error } = await supabase.functions.invoke('get-managed-users', {
+            body: { userId: effectiveId, targetRole: 'institute' }
+        });
+
+        if (error) {
+            archiveTableBody.innerHTML = `<tr><td colspan="4">خطا: ${error.message}</td></tr>`;
             return;
         }
-        archivedInstitutions.forEach(inst => {
+
+        // فیلتر: فقط آنهایی که وضعیتشان archived است
+        const archivedList = institutions.filter(i => i.status === 'archived');
+
+        loadingMessage.style.display = 'none';
+
+        if (archivedList.length === 0) {
+            archiveTableBody.innerHTML = '<tr><td colspan="4">هیچ موسسه آرشیو شده‌ای وجود ندارد.</td></tr>';
+            return;
+        }
+
+        // نمایش در جدول
+        for (const inst of archivedList) {
+            // دریافت اطلاعات لاگ برای اینکه بفهمیم کی آرشیو شده (اختیاری ولی حرفه‌ای)
+            // این کوئری آخرین لاگ آرشیو مربوط به این کاربر را می‌گیرد
+            const { data: logs } = await supabase
+                .from('action_logs')
+                .select('created_at, actor_id')
+                .eq('target_user_id', inst.id)
+                .eq('action_type', 'archive_institution')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            const archiveDate = logs ? new Date(logs.created_at).toLocaleDateString('fa-IR') : 'نامشخص';
+
             const row = document.createElement('tr');
-            row.dataset.institution = JSON.stringify(inst);
-            row.innerHTML = `<td><a href="#" class="view-profile-link">${inst.username}</a></td><td>${inst.archiveDate || '-'}</td><td>${inst.archivedBy || '-'}</td><td><button class="restore-btn" data-id="${inst.institutionId}" data-name="${inst.username}">بازگردانی</button></td>`;
+            row.innerHTML = `
+                <td><a href="#" class="view-profile" data-id="${inst.id}" data-name="${inst.username}">${inst.username}</a></td>
+                <td>${archiveDate}</td>
+                <td>${inst.role === 'institute' ? 'موسسه' : '-'}</td>
+                <td>
+                    <button class="restore-btn" onclick="restoreInstitution('${inst.id}', '${inst.username}')">بازگردانی (Restore)</button>
+                </td>
+            `;
             archiveTableBody.appendChild(row);
+        }
+
+        // فعال‌سازی لینک‌های مشاهده پروفایل
+        document.querySelectorAll('.view-profile').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                showProfile(e.target.dataset.id, e.target.dataset.name);
+            });
         });
     }
-    
-    function showProfileView(institution) {
+
+    // --- ۴. تابع بازگردانی (Restore) ---
+    window.restoreInstitution = async (id, name) => {
+        if (!confirm(`آیا مطمئن هستید که می‌خواهید موسسه «${name}» را فعال کنید؟`)) return;
+
+        // تغییر وضعیت در دیتابیس از archived به active
+        const { error } = await supabase
+            .from('profiles')
+            .update({ status: 'active' })
+            .eq('id', id);
+
+        if (error) {
+            alert('خطا در بازگردانی: ' + error.message);
+        } else {
+            // ثبت لاگ بازگردانی
+            const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
+            await supabase.from('action_logs').insert({
+                actor_id: effectiveId,
+                target_user_id: id,
+                action_type: 'restore_institution',
+                description: `موسسه ${name} بازگردانی شد.`
+            });
+
+            alert('موسسه با موفقیت بازگردانی شد و به لیست اصلی برگشت.');
+            loadArchivedInstitutions(); // رفرش لیست
+        }
+    };
+
+    // --- ۵. نمایش پروفایل و تاریخچه (برای موسسات آرشیو شده) ---
+    async function showProfile(instId, instName) {
         archiveListView.style.display = 'none';
         profileView.style.display = 'block';
-        profileTitle.textContent = `پروفایل موسسه: ${institution.username}`;
-        profileCard.innerHTML = `<p>تاریخ ایجاد: <span class="highlight">${institution.creationDate || '-'}</span></p><p>ایجاد شده توسط: <span class="highlight">${institution.createdBy || '-'}</span></p><p>تاریخ آرشیو: <span class="highlight">${institution.archiveDate || '-'}</span></p><p>آرشیو شده توسط: <span class="highlight">${institution.archivedBy || '-'}</span></p>`;
-        fetchProfileDetails(institution.institutionId);
-    }
-
-    async function fetchProfileDetails(institutionId) {
+        document.getElementById('profile-title').textContent = `پروفایل آرشیو: ${instName}`;
+        
+        // لود کردن اعضا
         profileMembersBody.innerHTML = '<tr><td colspan="3">در حال بارگذاری...</td></tr>';
-        profileHistoryBody.innerHTML = '<tr><td colspan="3">در حال بارگذاری...</td></tr>';
-        const [membersResult, historyResult] = await Promise.all([
-            apiCall('getAllMembersForAdmin', { institutionId }),
-            apiCall('getInstitutionHistory', { institutionId })
-        ]);
-        if(membersResult.status === 'success') {
-            profileMembersBody.innerHTML = '';
-            membersResult.data.forEach(m => allMembers[m.memberId] = m.fullName);
-            if (membersResult.data.length === 0) {
-                profileMembersBody.innerHTML = '<tr><td colspan="3">هیچ عضوی یافت نشد.</td></tr>';
-            } else {
-                membersResult.data.forEach(member => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `<td>${member.memberId}</td><td><a href="#" class="clickable-member-archive" data-member-id="${member.memberId}">${member.fullName}</a></td><td>${member.isActive ? 'فعال' : 'غیرفعال'}</td>`;
-                    profileMembersBody.appendChild(row);
-                });
-            }
-        }
-        if(historyResult.status === 'success') {
-            profileHistoryBody.innerHTML = '';
-             if (historyResult.data.length === 0) {
-                profileHistoryBody.innerHTML = '<tr><td colspan="3">هیچ سابقه‌ای یافت نشد.</td></tr>';
-            } else {
-                historyResult.data.forEach(record => {
-                    const row = document.createElement('tr');
-                    const memberName = allMembers[record.memberId] || `(شناسه: ${record.memberId})`;
-                    row.innerHTML = `<td>${record.date}</td><td>${memberName}</td><td>${record.status}</td>`;
-                    profileHistoryBody.appendChild(row);
-                });
-            }
-        }
-    }
-    
-    // --- بارگذاری اولیه ---
-    async function fetchArchived() {
-        const result = await apiCall('getArchivedInstitutions', {});
-        if (result.status === 'success') {
-            loadingMessage.style.display = 'none';
-            renderArchiveTable(result.data);
+        const { data: members } = await supabase.from('members').select('*').eq('institution_id', instId);
+        
+        profileMembersBody.innerHTML = '';
+        if (members && members.length > 0) {
+            members.forEach(m => {
+                profileMembersBody.innerHTML += `<tr><td>${m.id}</td><td>${m.full_name}</td><td>${m.is_active ? 'فعال' : 'حذف شده'}</td></tr>`;
+            });
         } else {
-            loadingMessage.textContent = 'خطا در بارگذاری اطلاعات: ' + result.message;
+            profileMembersBody.innerHTML = '<tr><td colspan="3">عضوی یافت نشد.</td></tr>';
+        }
+
+        // لود کردن تاریخچه حضور و غیاب (۵۰ تای آخر)
+        profileHistoryBody.innerHTML = '<tr><td colspan="3">در حال بارگذاری...</td></tr>';
+        const { data: history } = await supabase
+            .from('attendance_records')
+            .select('date, status, members(full_name)')
+            .eq('institution_id', instId)
+            .order('date', { ascending: false })
+            .limit(50);
+
+        profileHistoryBody.innerHTML = '';
+        if (history && history.length > 0) {
+            history.forEach(h => {
+                profileHistoryBody.innerHTML += `<tr><td>${new Date(h.date).toLocaleDateString('fa-IR')}</td><td>${h.members.full_name}</td><td>${h.status}</td></tr>`;
+            });
+        } else {
+            profileHistoryBody.innerHTML = '<tr><td colspan="3">سابقه‌ای یافت نشد.</td></tr>';
         }
     }
 
-    // --- مدیریت رویدادها ---
-    archiveTableBody.addEventListener('click', async (e) => {
-        const target = e.target;
-        if (target.classList.contains('restore-btn')) {
-            const instId = target.dataset.id;
-            const instName = target.dataset.name;
-            if (confirm(`آیا از بازگردانی موسسه "${instName}" مطمئن هستید؟`)) {
-                target.disabled = true;
-                target.textContent = 'در حال بازگردانی...';
-                const result = await apiCall('restoreInstitution', { institutionId: instId });
-                if (result.status === 'success') {
-                    alert(result.data.message);
-                    fetchArchived();
-                } else {
-                    alert('خطا در بازگردانی: ' + result.message);
-                    target.disabled = false;
-                    target.textContent = 'بازگردانی';
-                }
-            }
-        } else if (target.classList.contains('view-profile-link')) {
-            e.preventDefault();
-            const institutionData = JSON.parse(target.closest('tr').dataset.institution);
-            showProfileView(institutionData);
-        }
-    });
-    
+    // دکمه بازگشت به لیست
     backToListBtn.addEventListener('click', () => {
         profileView.style.display = 'none';
         archiveListView.style.display = 'block';
-        memberProfileCardArchive.style.display = 'none';
     });
     
-    document.querySelectorAll('#profile-view .tab-button').forEach(button => { button.addEventListener('click', () => { document.querySelectorAll('#profile-view .tab-button').forEach(btn => btn.classList.remove('active')); document.querySelectorAll('#profile-view .tab-content').forEach(content => content.classList.remove('active')); button.classList.add('active'); document.getElementById(button.dataset.tab + '-tab').classList.add('active'); }); });
-
-    profileMembersBody.addEventListener('click', async (e) => {
-        e.preventDefault();
-        if (e.target.classList.contains('clickable-member-archive')) {
-            const memberId = e.target.dataset.memberId;
-            memberProfileCardArchive.style.display = 'block';
-            memberProfileCardArchive.innerHTML = `<p>در حال دریافت آمار عضو...</p>`;
-            const result = await apiCall('getMemberProfile', { memberId });
-            if (result.status === 'success') {
-                const profile = result.data;
-                memberProfileCardArchive.innerHTML = `<h4>پروفایل عضو: ${e.target.textContent}</h4><p>تاریخ ثبت نام: <span class="highlight">${profile.creationDate}</span></p><p>کد ملی: <span class="highlight">${profile.nationalId}</span></p><p>شماره موبایل: <span class="highlight">${profile.mobile}</span></p><hr><p>تعداد کل حضور: <span class="highlight present">${profile.totalPresents}</span></p><p>تعداد کل غیبت: <span class="highlight absent">${profile.totalAbsents}</span></p>`;
-            } else {
-                memberProfileCardArchive.innerHTML = `<p class="error-message">${result.message}</p>`;
-            }
-        }
+    // مدیریت تب‌های پروفایل
+    document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById(btn.dataset.tab + '-tab').classList.add('active');
+        });
     });
 
-    // --- اجرای اولیه ---
-    fetchArchived();
+    // شروع
+    loadArchivedInstitutions();
 });
