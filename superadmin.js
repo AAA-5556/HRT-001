@@ -5,10 +5,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
     
-    // دسترسی: سوپرادمین واقعی یا روتی که نقش بازی می‌کند
-    const allowed = profile.role === 'superadmin' || localStorage.getItem('impersonatedRole') === 'superadmin';
-    
-    if (!allowed && profile.role !== 'root') { // روت همیشه دسترسی دارد
+    // دسترسی: سوپرادمین یا روت (شبیه‌سازی)
+    const isImpersonating = localStorage.getItem('impersonationActive');
+    const effectiveRole = isImpersonating ? localStorage.getItem('impersonatedRole') : profile.role;
+
+    if (effectiveRole !== 'superadmin' && profile.role !== 'root') {
         window.location.href = 'index.html'; 
         return; 
     }
@@ -19,12 +20,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const adminListBody = document.getElementById('admin-list-body');
     const addUserModal = document.getElementById('add-user-modal');
 
-    // --- دریافت لیست ادمین‌ها ---
+    // --- ۱. لیست ادمین‌ها ---
     async function loadAdmins() {
         adminListBody.innerHTML = '<tr><td colspan="4">در حال بارگذاری...</td></tr>';
         
-        // شناسه موثر (اگر شبیه‌سازی است، شناسه سوپرادمین جعلی)
-        const effectiveId = localStorage.getItem('impersonatedUserId') || session.user.id;
+        const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
 
         const { data: admins, error } = await supabase.functions.invoke('get-managed-users', {
             body: { userId: effectiveId, targetRole: 'admin' }
@@ -35,14 +35,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        const activeAdmins = admins.filter(u => u.status === 'active');
+
         adminListBody.innerHTML = '';
-        if (admins.length === 0) {
-            adminListBody.innerHTML = '<tr><td colspan="4">هیچ ادمینی تعریف نشده است.</td></tr>';
+        if (activeAdmins.length === 0) {
+            adminListBody.innerHTML = '<tr><td colspan="4">هیچ ادمین فعالی یافت نشد.</td></tr>';
             return;
         }
 
-        for (const admin of admins) {
-            // شمارش تعداد موسسات زیرمجموعه این ادمین
+        for (const admin of activeAdmins) {
             const { count } = await supabase
                 .from('profiles')
                 .select('*', { count: 'exact', head: true })
@@ -54,25 +55,58 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <td>${new Date(admin.created_at).toLocaleDateString('fa-IR')}</td>
                 <td>${count || 0} موسسه</td>
                 <td class="actions">
-                    <button class="impersonate-btn" onclick="startImpersonation('${admin.id}', '${admin.username}', 'admin')">ورود به پنل</button>
+                    <button class="impersonate-btn" onclick="startImpersonation('${admin.id}', '${admin.username}', 'admin')">ورود</button>
+                    <!-- دکمه آرشیو -->
+                    <button onclick="archiveUser('${admin.id}', '${admin.username}')" style="background-color:orange; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">آرشیو</button>
                     <button class="edit-btn" onclick="editUser('${admin.id}', '${admin.username}')">ویرایش</button>
-                    <button class="delete-btn" onclick="deleteUser('${admin.id}')">حذف</button>
+                    <button class="delete-btn" onclick="deleteUser('${admin.id}', '${admin.username}')">حذف</button>
                 </td>
             `;
             adminListBody.appendChild(row);
         }
     }
 
-    // --- افزودن ادمین جدید ---
+    // --- ۲. تابع آرشیو ---
+    window.archiveUser = async (id, name) => {
+        if (!confirm(`آیا مطمئن هستید؟ ادمین «${name}» دیگر نمی‌تواند وارد شود، اما موسساتش سرجایشان می‌مانند.`)) return;
+
+        const { error } = await supabase
+            .from('profiles')
+            .update({ status: 'archived' })
+            .eq('id', id);
+
+        if (error) alert('خطا: ' + error.message);
+        else {
+            const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
+            await supabase.from('action_logs').insert({
+                actor_id: effectiveId,
+                target_user_id: id,
+                action_type: 'archive_admin',
+                description: `ادمین ${name} آرشیو شد.`
+            });
+            alert('ادمین آرشیو شد.');
+            loadAdmins();
+        }
+    };
+
+    // --- ۳. توابع دیگر (حذف، ساخت، ویرایش) ---
+    window.deleteUser = async (id, name) => {
+        if(!confirm(`خطر!!!\nحذف ادمین «${name}» باعث حذف تمام موسسات او می‌شود!\nآیا مطمئن هستید؟`)) return;
+        
+        const { error } = await supabase.functions.invoke('delete-user', {
+            body: { userId: id, requesterId: session.user.id }
+        });
+        if (!error) { alert('حذف شد.'); loadAdmins(); }
+    };
+
     document.getElementById('add-user-form').addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('new-username').value;
         const password = document.getElementById('new-password').value;
         const status = document.getElementById('add-user-status');
-        const effectiveId = localStorage.getItem('impersonatedUserId') || session.user.id;
+        const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
 
         status.textContent = 'در حال ساخت...';
-        
         const { error } = await supabase.functions.invoke('create-user', {
             body: { username, password, creatorId: effectiveId }
         });
@@ -82,7 +116,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             status.textContent = error.message;
         } else {
             status.style.color = 'green';
-            status.textContent = 'ادمین ساخته شد.';
+            status.textContent = 'ساخته شد.';
             setTimeout(() => {
                 addUserModal.style.display = 'none';
                 loadAdmins();
@@ -90,17 +124,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // --- توابع حذف و خروج ---
-    window.deleteUser = async (id) => {
-        if(!confirm('با حذف ادمین، تمام موسسات زیرمجموعه او هم حذف می‌شوند. ادامه می‌دهید؟')) return;
-        const { error } = await supabase.functions.invoke('delete-user', {
-            body: { userId: id, requesterId: session.user.id }
-        });
-        if (!error) { alert('حذف شد.'); loadAdmins(); }
+    window.editUser = (id, name) => {
+        const modal = document.getElementById('edit-user-modal');
+        document.getElementById('edit-user-id').value = id;
+        document.getElementById('edit-modal-title').textContent = `ویرایش: ${name}`;
+        modal.style.display = 'flex';
     };
 
+    document.getElementById('edit-user-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = document.getElementById('edit-user-id').value;
+        const pass = document.getElementById('edit-password').value;
+        if(!pass) return;
+        
+        const { error } = await supabase.functions.invoke('update-user-password', {
+            body: { userId: id, newPassword: pass, requesterId: session.user.id }
+        });
+        if(error) alert('خطا: ' + error.message);
+        else {
+            alert('رمز تغییر کرد.');
+            document.getElementById('edit-user-modal').style.display = 'none';
+        }
+    });
+
     document.getElementById('add-admin-button').onclick = () => addUserModal.style.display = 'flex';
-    document.querySelectorAll('.cancel-btn').forEach(b => b.onclick = () => addUserModal.style.display = 'none');
+    document.querySelectorAll('.cancel-btn').forEach(b => b.onclick = () => document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none'));
     document.getElementById('logout-button').onclick = async () => {
         await supabase.auth.signOut();
         window.location.href = 'index.html';
