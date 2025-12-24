@@ -5,57 +5,56 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorMessage = document.getElementById('error-message');
     const loginButton = document.getElementById('login-button');
 
-    // اگر کاربر قبلاً لاگین کرده
+    // چک کردن وضعیت کاربر در لحظه لود شدن صفحه
     async function checkSession() {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-            checkStatusAndRedirect(session.user.id);
+            // سشن هست، اما آیا کاربر فعال است؟
+            validateAndRedirect(session.user.id);
         }
     }
 
-    // تابع اصلی هدایت (با چک کردن وضعیت فعال/آرشیو)
-    async function checkStatusAndRedirect(userId) {
-        loginButton.textContent = 'در حال بررسی وضعیت...';
-        
+    async function validateAndRedirect(userId) {
+        loginButton.disabled = true;
+        loginButton.textContent = 'در حال اعتبارسنجی...';
+
         const { data: profile, error } = await supabase
             .from('profiles')
-            .select('*')
+            .select('role, status') // وضعیت را حتما می‌گیریم
             .eq('id', userId)
             .single();
 
         if (error || !profile) {
-            errorMessage.textContent = 'خطا در دریافت پروفایل.';
+            console.error('Profile Error:', error);
             await supabase.auth.signOut();
+            errorMessage.textContent = 'خطا در شناسایی کاربر.';
             loginButton.disabled = false;
             loginButton.textContent = 'ورود';
             return;
         }
 
-        // --- بخش امنیتی جدید: جلوگیری از ورود آرشیو شده‌ها ---
-        if (profile.status === 'archived' || profile.status === 'suspended') {
-            errorMessage.textContent = 'حساب کاربری شما مسدود یا بایگانی شده است.';
+        // *** شرط حیاتی: اگر آرشیو یا مسدود است، اخراج شود ***
+        if (profile.status !== 'active') {
+            await supabase.auth.signOut();
+            errorMessage.textContent = 'حساب کاربری شما غیرفعال یا بایگانی شده است.';
             errorMessage.style.color = 'red';
-            await supabase.auth.signOut(); // اخراج فوری
             loginButton.disabled = false;
             loginButton.textContent = 'ورود';
             return;
         }
 
-        // اگر فعال بود، برو داخل
-        switch (profile.role) {
-            case 'root': window.location.href = 'root.html'; break;
-            case 'superadmin': window.location.href = 'superadmin.html'; break;
-            case 'admin': window.location.href = 'admin.html'; break;
-            case 'institute': window.location.href = 'attendance.html'; break;
-            default: errorMessage.textContent = 'نقش نامعتبر.';
-        }
+        // هدایت بر اساس نقش
+        if (profile.role === 'root') window.location.href = 'root.html';
+        else if (profile.role === 'superadmin') window.location.href = 'superadmin.html';
+        else if (profile.role === 'admin') window.location.href = 'admin.html';
+        else if (profile.role === 'institute') window.location.href = 'attendance.html';
     }
 
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         errorMessage.textContent = '';
         loginButton.disabled = true;
-        loginButton.textContent = 'در حال اعتبارسنجی...';
+        loginButton.textContent = 'در حال ورود...';
 
         const username = usernameInput.value.trim();
         const password = passwordInput.value.trim();
@@ -71,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loginButton.disabled = false;
             loginButton.textContent = 'ورود';
         } else {
-            checkStatusAndRedirect(data.user.id);
+            validateAndRedirect(data.user.id);
         }
     });
 
