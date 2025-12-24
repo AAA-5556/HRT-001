@@ -52,7 +52,12 @@ serve(async (req) => {
             email_confirm: true,
         });
 
-        if (authError) throw authError;
+        if (authError) {
+            if (authError.message.includes("already registered")) {
+                throw new Error(`User with email '${username}' already exists.`);
+            }
+            throw authError;
+        }
         const newUserId = authData.user.id;
         let institutionId = null;
 
