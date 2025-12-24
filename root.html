@@ -3,22 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>پنل کاربری روت</title>
+    <title>پنل روت</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header class="page-header">
-            <h2 id="root-title">پنل کاربری روت</h2>
+            <div class="header-title-menu">
+                <h2 id="root-title">پنل کاربری روت</h2>
+                <!-- منوی کشویی که دنبالش بودید -->
+                <div class="main-menu-container">
+                    <button id="main-menu-button" class="card-menu-button">⋮</button>
+                    <div id="main-menu-dropdown" class="card-menu-dropdown">
+                        <a href="archive.html">📂 بایگانی سوپرادمین‌ها</a>
+                        <a href="settings.html">⚙️ تنظیمات کل سیستم</a>
+                        <hr style="margin: 5px 0;">
+                        <a href="login-log.html">📅 تاریخچه ورودها</a>
+                        <a href="action-log.html">📝 تاریخچه تغییرات</a>
+                    </div>
+                </div>
+            </div>
             <div class="header-actions">
                 <button id="logout-button">خروج</button>
             </div>
         </header>
 
         <h3>آمار کلی سیستم</h3>
-        <div id="dashboard-container" class="dashboard">
-            <!-- Statistics will be loaded here by JavaScript -->
-        </div>
+        <div id="dashboard-container" class="dashboard"></div>
 
         <hr class="section-divider">
 
@@ -26,7 +37,7 @@
             <h3>مدیریت کاربران Superadmin</h3>
             <button id="add-superadmin-button" class="add-button">+ افزودن Superadmin</button>
         </div>
-        <p id="loading-message">در حال بارگذاری اطلاعات...</p>
+        
         <table>
             <thead>
                 <tr>
@@ -35,53 +46,24 @@
                     <th>اقدامات</th>
                 </tr>
             </thead>
-            <tbody id="superadmin-list-body">
-                <!-- Superadmin users will be listed here -->
-            </tbody>
+            <tbody id="superadmin-list-body"></tbody>
         </table>
     </div>
 
-    <!-- Add Superadmin Modal -->
+    <!-- مودال افزودن کاربر -->
     <div id="add-user-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content">
-            <h3>افزودن Superadmin جدید</h3>
+            <h3>افزودن کاربر جدید</h3>
             <form id="add-user-form">
-                <div class="form-group">
-                    <label for="new-username">نام کاربری</label>
-                    <input type="text" id="new-username" required>
-                </div>
-                <div class="form-group">
-                    <label for="new-password">رمز عبور</label>
-                    <input type="password" id="new-password" required>
-                </div>
-                <div class="modal-actions">
-                    <button type="submit">ایجاد کاربر</button>
-                    <button type="button" class="cancel-btn">انصراف</button>
-                </div>
+                <div class="form-group"><label>نام کاربری</label><input type="text" id="new-username" required></div>
+                <div class="form-group"><label>رمز عبور</label><input type="password" id="new-password" required></div>
+                <div class="modal-actions"><button type="submit">ایجاد</button><button type="button" class="cancel-btn">انصراف</button></div>
             </form>
             <p id="add-user-status" class="error-message"></p>
         </div>
     </div>
 
-    <!-- Edit User Modal -->
-    <div id="edit-user-modal" class="modal-overlay" style="display: none;">
-        <div class="modal-content">
-            <h3 id="edit-modal-title">ویرایش اطلاعات کاربر</h3>
-            <form id="edit-user-form">
-                <input type="hidden" id="edit-user-id">
-                <div class="form-group">
-                    <label for="edit-password">رمز عبور جدید (اختیاری)</label>
-                    <input type="password" id="edit-password" placeholder="برای تغییر، رمز جدید را وارد کنید">
-                </div>
-                <div class="modal-actions">
-                    <button type="submit">ذخیره تغییرات</button>
-                    <button type="button" class="cancel-btn">انصراف</button>
-                </div>
-            </form>
-            <p id="edit-user-status" class="error-message"></p>
-        </div>
-    </div>
-
+    <!-- اسکریپت‌ها -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
     <script src="impersonation.js"></script>
