@@ -3,23 +3,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { window.location.href = 'index.html'; return; }
 
-    // دریافت پروفایل
     const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
     if (profile.role !== 'root') { 
-        alert('دسترسی غیرمجاز'); 
         window.location.href = 'index.html'; 
         return; 
     }
 
     // --- تنظیمات اولیه ---
     document.getElementById('root-title').textContent = `پنل روت (${profile.username})`;
-    initImpersonationUI(); // فعال‌سازی بنر شبیه‌سازی
+    if (typeof initImpersonationUI === 'function') initImpersonationUI();
 
     const dashboardContainer = document.getElementById('dashboard-container');
     const superadminListBody = document.getElementById('superadmin-list-body');
     const addModal = document.getElementById('add-user-modal');
     
-    // --- دریافت آمار داشبورد ---
+    // --- ۱. آمار داشبورد ---
     async function loadStats() {
         dashboardContainer.innerHTML = '<p>در حال دریافت آمار...</p>';
         const { data, error } = await supabase.functions.invoke('get-dashboard-stats');
@@ -37,15 +35,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
     }
 
-    // --- دریافت لیست سوپرادمین‌ها ---
+    // --- ۲. لیست سوپرادمین‌ها ---
     async function loadSuperadmins() {
         superadminListBody.innerHTML = '<tr><td colspan="3">در حال بارگذاری...</td></tr>';
         
-        // اگر در حال شبیه‌سازی هستیم، ID آن شخص را بفرست، وگرنه ID خودمان
-        const effectiveId = getEffectiveUserId(session.user.id);
-
+        // دریافت لیست سوپرادمین‌ها
         const { data, error } = await supabase.functions.invoke('get-managed-users', {
-            body: { userId: effectiveId, targetRole: 'superadmin' }
+            body: { userId: session.user.id, targetRole: 'superadmin' }
         });
 
         if (error) {
@@ -53,77 +49,104 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        // فیلتر: فقط آنهایی که فعال هستند را نشان بده (آرشیو شده‌ها می‌روند در لیست جدا)
+        const activeUsers = data.filter(u => u.status === 'active');
+
         superadminListBody.innerHTML = '';
-        if (data.length === 0) {
-            superadminListBody.innerHTML = '<tr><td colspan="3">موردی یافت نشد.</td></tr>';
+        if (activeUsers.length === 0) {
+            superadminListBody.innerHTML = '<tr><td colspan="3">هیچ سوپرادمین فعالی یافت نشد.</td></tr>';
             return;
         }
 
-        data.forEach(user => {
+        activeUsers.forEach(user => {
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${user.username}</td>
                 <td>${new Date(user.created_at).toLocaleDateString('fa-IR')}</td>
                 <td class="actions">
-                    <button class="impersonate-btn" onclick="startImpersonation('${user.id}', '${user.username}', 'superadmin')">ورود به پنل</button>
-                    <button class="delete-btn" onclick="deleteUser('${user.id}')">حذف</button>
+                    <button class="impersonate-btn" onclick="startImpersonation('${user.id}', '${user.username}', 'superadmin')">ورود</button>
+                    <!-- دکمه آرشیو اضافه شد -->
+                    <button onclick="archiveUser('${user.id}', '${user.username}')" style="background-color:orange; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">آرشیو</button>
+                    <button class="delete-btn" onclick="deleteUser('${user.id}', '${user.username}')">حذف</button>
                 </td>
             `;
             superadminListBody.appendChild(row);
         });
     }
 
-    // --- ایجاد کاربر جدید ---
-    document.getElementById('add-user-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const btn = e.target.querySelector('button[type="submit"]');
-        const status = document.getElementById('add-user-status');
-        
-        const username = document.getElementById('new-username').value;
-        const password = document.getElementById('new-password').value;
-        const effectiveId = getEffectiveUserId(session.user.id);
+    // --- ۳. تابع آرشیو (امن) ---
+    window.archiveUser = async (id, name) => {
+        if (!confirm(`آیا مطمئن هستید؟ با آرشیو کردن «${name}»، دسترسی او قطع می‌شود اما زیرمجموعه‌هایش حفظ می‌شوند.`)) return;
 
-        btn.disabled = true;
-        status.textContent = 'در حال ساخت کاربر...';
-
-        const { data, error } = await supabase.functions.invoke('create-user', {
-            body: { username, password, creatorId: effectiveId }
-        });
+        const { error } = await supabase
+            .from('profiles')
+            .update({ status: 'archived' })
+            .eq('id', id);
 
         if (error) {
-            status.style.color = 'red';
-            status.textContent = 'خطا: ' + error.message;
+            alert('خطا: ' + error.message);
         } else {
-            status.style.color = 'green';
-            status.textContent = 'کاربر با موفقیت ساخته شد!';
-            setTimeout(() => {
-                addModal.style.display = 'none';
-                e.target.reset();
-                status.textContent = '';
-                loadSuperadmins(); // رفرش لیست
-                loadStats(); // رفرش آمار
-            }, 1500);
-        }
-        btn.disabled = false;
-    });
-
-    // --- حذف کاربر ---
-    window.deleteUser = async (targetId) => {
-        if (!confirm('آیا مطمئن هستید؟ حذف کاربر غیرقابل بازگشت است.')) return;
-
-        const { error } = await supabase.functions.invoke('delete-user', {
-            body: { userId: targetId, requesterId: session.user.id }
-        });
-
-        if (error) alert('خطا در حذف: ' + error.message);
-        else {
-            alert('کاربر حذف شد.');
+            // ثبت لاگ
+            await supabase.from('action_logs').insert({
+                actor_id: session.user.id,
+                target_user_id: id,
+                action_type: 'archive_superadmin',
+                description: `کاربر سوپرادمین ${name} آرشیو شد.`
+            });
+            alert('کاربر آرشیو شد.');
             loadSuperadmins();
             loadStats();
         }
     };
 
-    // --- مدیریت مودال و خروج ---
+    // --- ۴. تابع حذف (خطرناک) ---
+    window.deleteUser = async (targetId, name) => {
+        if (!confirm(`هشدار قرمز!!\nآیا از حذف کامل «${name}» مطمئن هستید؟\nبا این کار تمام ادمین‌ها و موسسات زیرمجموعه او هم نابود می‌شوند!`)) return;
+
+        const { error } = await supabase.functions.invoke('delete-user', {
+            body: { userId: targetId, requesterId: session.user.id }
+        });
+
+        if (error) alert('خطا: ' + error.message);
+        else {
+            alert('کاربر و زیرمجموعه‌هایش حذف شدند.');
+            loadSuperadmins();
+            loadStats();
+        }
+    };
+
+    // --- ۵. ساخت کاربر ---
+    document.getElementById('add-user-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        const status = document.getElementById('add-user-status');
+        const username = document.getElementById('new-username').value;
+        const password = document.getElementById('new-password').value;
+
+        btn.disabled = true;
+        status.textContent = 'در حال ساخت...';
+
+        const { error } = await supabase.functions.invoke('create-user', {
+            body: { username, password, creatorId: session.user.id }
+        });
+
+        if (error) {
+            status.style.color = 'red';
+            status.textContent = error.message;
+        } else {
+            status.style.color = 'green';
+            status.textContent = 'ساخته شد!';
+            setTimeout(() => {
+                addModal.style.display = 'none';
+                e.target.reset();
+                status.textContent = '';
+                loadSuperadmins();
+                loadStats();
+            }, 1000);
+        }
+        btn.disabled = false;
+    });
+
     document.getElementById('add-superadmin-button').onclick = () => addModal.style.display = 'flex';
     document.querySelectorAll('.cancel-btn').forEach(b => b.onclick = () => addModal.style.display = 'none');
     document.getElementById('logout-button').onclick = async () => {
@@ -131,7 +154,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.location.href = 'index.html';
     };
 
-    // اجرای اولیه
     loadStats();
     loadSuperadmins();
 });
