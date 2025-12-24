@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    // --- ۱. بررسی امنیتی ---
+    // ۱. بررسی دسترسی
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { window.location.href = 'index.html'; return; }
 
@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.querySelector('.back-link').href = `${effectiveRole}.html`;
 
-    // --- ۲. دریافت لاگ‌ها ---
+    // ۲. دریافت و نمایش لاگ‌ها
     const logTableBody = document.getElementById('log-table-body');
     const loadingMessage = document.getElementById('loading-log');
     const userFilter = document.getElementById('user-filter');
@@ -25,16 +25,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadingMessage.style.display = 'block';
         logTableBody.innerHTML = '';
 
-        // دریافت ۵۰ لاگین آخر (نوع action_type = login نداریم چون سوپابیس لاگین را در action_logs ثبت نمی‌کند مگر دستی بنویسیم)
-        // اما چون شما فایل جدا خواستید، ما لاگ‌های action_logs را که مربوط به ورود است می‌خوانیم
-        // نکته: اگر لاگ ورود اتوماتیک ندارید، فعلا لاگ‌های 'login_as' یا شبیه‌سازی را نشان می‌دهیم
-        // یا اگر منظورتان جدول auth.audit_log_entries است که دسترسی مستقیم ندارید.
-        
-        // فرض: ما می‌خواهیم action_logs را ببینیم
+        // کوئری برای گرفتن لاگ‌هایی که نوعشان 'login' است
         let query = supabase
             .from('action_logs')
-            .select('created_at, action_type, actor:actor_id(username, role)')
-            .in('action_type', ['login', 'start_impersonation']) // فقط لاگ‌های مربوط به ورود
+            .select(`
+                created_at, 
+                actor:actor_id(username, role)
+            `)
+            .eq('action_type', 'login') // فقط لاگین‌ها
             .order('created_at', { ascending: false })
             .limit(50);
 
@@ -47,19 +45,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        if (logs.length === 0) {
-            logTableBody.innerHTML = '<tr><td colspan="3">رکوردی یافت نشد.</td></tr>';
+        if (!logs || logs.length === 0) {
+            logTableBody.innerHTML = '<tr><td colspan="3">هنوز هیچ ورودی ثبت نشده است. (یک بار خارج و وارد شوید)</td></tr>';
             return;
         }
 
         logs.forEach(log => {
-            const row = document.createElement('tr');
-            const username = log.actor ? log.actor.username : 'نامشخص';
+            const username = log.actor ? log.actor.username : 'حذف شده';
             const role = log.actor ? log.actor.role : '-';
             
-            // فیلتر کلاینت ساید
+            // فیلتر جستجو (کلاینت ساید)
             if (userFilter.value && !username.includes(userFilter.value)) return;
 
+            const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${new Date(log.created_at).toLocaleString('fa-IR')}</td>
                 <td>${username}</td>
