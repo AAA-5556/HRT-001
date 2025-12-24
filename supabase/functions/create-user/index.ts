@@ -2,7 +2,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// Helper function to get the creator's profile
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 async function getCreatorProfile(supabase: SupabaseClient, creatorId: string) {
     const { data, error } = await supabase
         .from('profiles')
@@ -13,27 +17,20 @@ async function getCreatorProfile(supabase: SupabaseClient, creatorId: string) {
     return data;
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
 serve(async (req) => {
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders });
     }
     try {
-        const { username, password, creatorId, originalUserId } = await req.json();
-        const effectiveCreatorId = originalUserId || creatorId;
+        const { username, password, creatorId } = await req.json();
 
-        // Create a Supabase client with the service role key
         const supabaseAdmin = createClient(
             Deno.env.get("SUPABASE_URL") ?? "",
             Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
         );
 
-        // Determine the new user's role based on the creator's role
-        const creatorProfile = await getCreatorProfile(supabaseAdmin, effectiveCreatorId);
+        // Securely determine the new user's role on the server
+        const creatorProfile = await getCreatorProfile(supabaseAdmin, creatorId);
         let newUserRole = '';
         switch (creatorProfile.role) {
             case 'root':
@@ -49,18 +46,16 @@ serve(async (req) => {
                 throw new Error('Unauthorized user creation attempt.');
         }
 
-        // 1. Create the user in auth.users
         const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email: username,
             password: password,
-            email_confirm: true, // Auto-confirm the email
+            email_confirm: true,
         });
 
         if (authError) throw authError;
         const newUserId = authData.user.id;
         let institutionId = null;
 
-        // 2. Create an institution if the new user is an institute
         if (newUserRole === 'institute') {
             const { data: instData, error: instError } = await supabaseAdmin
                 .from('institutions')
@@ -74,7 +69,6 @@ serve(async (req) => {
             institutionId = instData.id;
         }
 
-        // 3. Create the user's profile
         const { error: profileError } = await supabaseAdmin
             .from('profiles')
             .upsert({

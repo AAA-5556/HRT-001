@@ -225,9 +225,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             addUserStatus.style.color = 'inherit';
 
             try {
-                const originalUserId = localStorage.getItem('originalUserId');
+            const impersonatedUserId = localStorage.getItem('impersonatedUserId');
+            const effectiveCreatorId = impersonatedUserId || currentUser.id;
+
                 const { data, error } = await supabase.functions.invoke('create-user', {
-                    body: { username, password, creatorId: currentUser.id, originalUserId }
+                body: { username, password, creatorId: effectiveCreatorId }
                 });
                 if (error) throw error;
 
@@ -314,7 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (profileError) throw profileError;
 
                 const { error } = await supabase.functions.invoke('update-user-password', {
-                    body: { userId: profile.id, newPassword }
+                body: { userId: profile.id, newPassword, requesterId: currentUser.id }
                 });
 
                 if (error) throw error;
