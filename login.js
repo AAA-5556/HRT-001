@@ -5,37 +5,49 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorMessage = document.getElementById('error-message');
     const loginButton = document.getElementById('login-button');
 
-    // اگر کاربر قبلاً لاگین کرده، مستقیم بفرستش داخل
+    // اگر کاربر قبلاً لاگین کرده
     async function checkSession() {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-            handleRedirect(session.user.id);
+            checkStatusAndRedirect(session.user.id);
         }
     }
 
-    async function handleRedirect(userId) {
-        loginButton.textContent = 'در حال انتقال...';
+    // تابع اصلی هدایت (با چک کردن وضعیت فعال/آرشیو)
+    async function checkStatusAndRedirect(userId) {
+        loginButton.textContent = 'در حال بررسی وضعیت...';
         
-        // دریافت نقش کاربر از جدول پروفایل‌ها
         const { data: profile, error } = await supabase
             .from('profiles')
-            .select('role')
+            .select('*')
             .eq('id', userId)
             .single();
 
         if (error || !profile) {
-            errorMessage.textContent = 'خطا در دریافت اطلاعات کاربر.';
+            errorMessage.textContent = 'خطا در دریافت پروفایل.';
             await supabase.auth.signOut();
+            loginButton.disabled = false;
+            loginButton.textContent = 'ورود';
             return;
         }
 
-        // هدایت بر اساس نقش
+        // --- بخش امنیتی جدید: جلوگیری از ورود آرشیو شده‌ها ---
+        if (profile.status === 'archived' || profile.status === 'suspended') {
+            errorMessage.textContent = 'حساب کاربری شما مسدود یا بایگانی شده است.';
+            errorMessage.style.color = 'red';
+            await supabase.auth.signOut(); // اخراج فوری
+            loginButton.disabled = false;
+            loginButton.textContent = 'ورود';
+            return;
+        }
+
+        // اگر فعال بود، برو داخل
         switch (profile.role) {
             case 'root': window.location.href = 'root.html'; break;
             case 'superadmin': window.location.href = 'superadmin.html'; break;
             case 'admin': window.location.href = 'admin.html'; break;
             case 'institute': window.location.href = 'attendance.html'; break;
-            default: errorMessage.textContent = 'نقش کاربری نامعتبر است.';
+            default: errorMessage.textContent = 'نقش نامعتبر.';
         }
     }
 
@@ -43,12 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         errorMessage.textContent = '';
         loginButton.disabled = true;
-        loginButton.textContent = 'در حال بررسی...';
+        loginButton.textContent = 'در حال اعتبارسنجی...';
 
         const username = usernameInput.value.trim();
         const password = passwordInput.value.trim();
-
-        // ساخت ایمیل سیستمی (چون سوپابیس ایمیل می‌خواهد)
         const email = `${username}@system.bir`;
 
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -57,12 +67,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (error) {
-            console.error('Login Error:', error);
             errorMessage.textContent = 'نام کاربری یا رمز عبور اشتباه است.';
             loginButton.disabled = false;
             loginButton.textContent = 'ورود';
         } else {
-            handleRedirect(data.user.id);
+            checkStatusAndRedirect(data.user.id);
         }
     });
 
