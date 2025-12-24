@@ -1,44 +1,56 @@
-// شروع شبیه‌سازی: وقتی روت یا سوپرادمین دکمه "ورود به حساب" را می‌زند
+// شروع شبیه‌سازی (هوشمند و تو در تو)
 async function startImpersonation(targetUserId, targetUsername, targetRole) {
-    // جلوگیری از شبیه‌سازی تو در تو
-    if (localStorage.getItem('impersonationActive')) {
-        alert('شما در حال حاضر در یک جلسه شبیه‌سازی هستید. ابتدا خارج شوید.');
-        return;
-    }
-
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // دریافت نقش واقعی کاربر جاری
-    const { data: myProfile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
+    // بررسی وضعیت فعلی
+    const isAlreadyImpersonating = localStorage.getItem('impersonationActive');
+    let realUserId = user.id;
+    let realUserRole = '';
 
-    // ذخیره وضعیت واقعی در حافظه مرورگر
-    localStorage.setItem('impersonationActive', 'true');
-    localStorage.setItem('realUserId', user.id);
-    localStorage.setItem('realUserRole', myProfile.role);
-    
-    // ذخیره وضعیت جعلی (کسی که ادایش را در می‌آوریم)
+    if (isAlreadyImpersonating) {
+        // اگر الان در حال شبیه‌سازی هستیم، شناسه واقعی را از حافظه می‌خوانیم
+        realUserId = localStorage.getItem('realUserId');
+        realUserRole = localStorage.getItem('realUserRole');
+        
+        // لاجیک امنیتی: فقط روت یا سوپرادمین اجازه پرش دارند
+        if (realUserRole !== 'root' && realUserRole !== 'superadmin') {
+            alert('شما اجازه تغییر هویت مجدد ندارید.');
+            return;
+        }
+    } else {
+        // اگر بار اول است، نقش واقعی را از دیتابیس می‌گیریم
+        const { data: myProfile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+        realUserRole = myProfile.role;
+        
+        // ذخیره هویت اصلی برای بازگشت
+        localStorage.setItem('impersonationActive', 'true');
+        localStorage.setItem('realUserId', realUserId);
+        localStorage.setItem('realUserRole', realUserRole);
+    }
+
+    // آپدیت کردن هویت جعلی (هدف جدید)
     localStorage.setItem('impersonatedUserId', targetUserId);
     localStorage.setItem('impersonatedRole', targetRole);
     localStorage.setItem('impersonatedUsername', targetUsername);
 
-    // ثبت لاگ در سرور
+    // ثبت لاگ (می‌گوییم کاربر واقعی، وارد جلد کاربر هدف شد)
     await supabase.from('action_logs').insert({
-        actor_id: user.id,
+        actor_id: realUserId, // همیشه روت (یا کاربر اصلی) ثبت می‌شود
         impersonated_user_id: targetUserId,
         action_type: 'start_impersonation',
-        description: `شروع شبیه‌سازی کاربر ${targetUsername}`
+        description: `شبیه‌سازی کاربر ${targetUsername} (تغییر سطح)`
     });
 
-    // هدایت به صفحه مربوطه
+    // هدایت به پنل مربوطه
     redirectBasedOnRole(targetRole);
 }
 
-// پایان شبیه‌سازی: دکمه "خروج از حالت مشاهده"
+// پایان شبیه‌سازی (بازگشت به اصل)
 async function stopImpersonation() {
     const realUserId = localStorage.getItem('realUserId');
     const realUserRole = localStorage.getItem('realUserRole');
@@ -51,10 +63,10 @@ async function stopImpersonation() {
         actor_id: realUserId,
         impersonated_user_id: targetUserId,
         action_type: 'stop_impersonation',
-        description: 'پایان شبیه‌سازی'
+        description: 'خروج از حالت شبیه‌سازی'
     });
 
-    // پاک کردن حافظه
+    // پاک کردن تمام حافظه شبیه‌سازی
     localStorage.removeItem('impersonationActive');
     localStorage.removeItem('realUserId');
     localStorage.removeItem('realUserRole');
@@ -62,17 +74,21 @@ async function stopImpersonation() {
     localStorage.removeItem('impersonatedRole');
     localStorage.removeItem('impersonatedUsername');
 
-    // بازگشت به پنل اصلی
+    // بازگشت به پنل کاربری خودِ شخص
     redirectBasedOnRole(realUserRole);
 }
 
-// نمایش بنر بالای صفحه وقتی در حالت شبیه‌سازی هستیم
 function initImpersonationUI() {
     const isImpersonating = localStorage.getItem('impersonationActive');
     const targetName = localStorage.getItem('impersonatedUsername');
 
     if (isImpersonating && targetName) {
+        // حذف بنر قبلی اگر وجود دارد (برای جلوگیری از تکرار)
+        const oldBanner = document.getElementById('impersonation-banner');
+        if (oldBanner) oldBanner.remove();
+
         const banner = document.createElement('div');
+        banner.id = 'impersonation-banner';
         banner.style.cssText = `
             background-color: #ff9800; color: white; padding: 10px; 
             text-align: center; position: sticky; top: 0; z-index: 1000;
@@ -80,19 +96,13 @@ function initImpersonationUI() {
             font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         `;
         banner.innerHTML = `
-            <span>⚠️ شما در حال مشاهده پنل کاربر «${targetName}» هستید.</span>
-            <button id="stop-impersonation-btn" style="background: white; color: #e65100; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">خروج از مشاهده</button>
+            <span>👀 مشاهده به عنوان: ${targetName}</span>
+            <button id="stop-impersonation-btn" style="background: white; color: #e65100; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">خروج</button>
         `;
         document.body.prepend(banner);
 
         document.getElementById('stop-impersonation-btn').addEventListener('click', stopImpersonation);
     }
-}
-
-// تابع کمکی برای دریافت ID معتبر (اگر شبیه‌سازی باشد، ID هدف را می‌دهد، وگرنه ID خودمان)
-function getEffectiveUserId(currentUserId) {
-    const impersonatedId = localStorage.getItem('impersonatedUserId');
-    return impersonatedId ? impersonatedId : currentUserId;
 }
 
 function redirectBasedOnRole(role) {
