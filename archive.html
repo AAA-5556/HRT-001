@@ -3,62 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>بایگانی موسسات</title>
+    <title>بایگانی</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <div id="archive-list-view">
-            <header class="page-header">
-                <h2>موسسات آرشیو شده</h2>
-                <a href="admin.html" class="back-link">بازگشت به داشبورد</a>
-            </header>
-            <p id="loading-archive">در حال بارگذاری لیست بایگانی...</p>
-            <table>
-                <thead>
-                    <tr>
-                        <th>نام کاربری</th>
-                        <th>تاریخ آرشیو</th>
-                        <th>آرشیو شده توسط</th>
-                        <th>عملیات</th>
-                    </tr>
-                </thead>
-                <tbody id="archive-table-body"></tbody>
-            </table>
+        <header class="page-header">
+            <h2>بایگانی</h2>
+            <a href="#" class="back-link">بازگشت</a>
+        </header>
+
+        <!-- فیلتر و جستجو -->
+        <div class="controls">
+            <input type="text" id="search-box" placeholder="جستجو در بایگانی...">
         </div>
 
-        <div id="profile-view" style="display: none;">
-            <header class="page-header">
-                <h2 id="profile-title">پروفایل موسسه...</h2>
-                <button id="back-to-list-btn" class="back-link" style="border-width: 2px;">بازگشت به لیست</button>
-            </header>
-
-            <div id="profile-summary-card" class="card"></div>
-
-            <div class="tab-buttons">
-                <button class="tab-button active" data-tab="members">لیست اعضا</button>
-                <button class="tab-button" data-tab="history">تاریخچه حضور و غیاب</button>
-            </div>
-            
-            <div id="members-tab" class="tab-content active">
-                <h3>لیست اعضای موسسه</h3>
-                <div id="member-profile-card-archive" class="card" style="display: none; background-color: #e9ecef;"></div>
-                <table>
-                    <thead><tr><th>شناسه</th><th>نام کامل</th><th>وضعیت</th></tr></thead>
-                    <tbody id="profile-members-body"></tbody>
-                </table>
-            </div>
-
-            <div id="history-tab" class="tab-content">
-                <h3>تاریخچه حضور و غیاب</h3>
-                <table>
-                    <thead><tr><th>تاریخ</th><th>نام عضو</th><th>وضعیت</th></tr></thead>
-                    <tbody id="profile-history-body"></tbody>
-                </table>
-            </div>
-        </div>
+        <p id="loading-archive">در حال بارگذاری...</p>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>نام کاربری</th>
+                    <th>تاریخ ایجاد</th>
+                    <th>نقش</th>
+                    <th>عملیات</th>
+                </tr>
+            </thead>
+            <tbody id="archive-table-body"></tbody>
+        </table>
     </div>
     
+    <!-- ترتیب این ۳ خط حیاتی است: اول کتابخانه، دوم کلاینت ما، سوم کد صفحه -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
     <script src="archive.js"></script>
 </body>
 </html>
