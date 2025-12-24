@@ -1,108 +1,103 @@
-// This file will be created in a later step. It is here for reference.
+// شروع شبیه‌سازی: وقتی روت یا سوپرادمین دکمه "ورود به حساب" را می‌زند
 async function startImpersonation(targetUserId, targetUsername, targetRole) {
-    const originalUserId = localStorage.getItem('originalUserId');
-    if (originalUserId) {
-        alert('Cannot start a new impersonation session while another is active.');
+    // جلوگیری از شبیه‌سازی تو در تو
+    if (localStorage.getItem('impersonationActive')) {
+        alert('شما در حال حاضر در یک جلسه شبیه‌سازی هستید. ابتدا خارج شوید.');
         return;
     }
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-        alert('Authentication error.');
-        return;
-    }
-    const currentUser = session.user;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', currentUser.id).single();
+    // دریافت نقش واقعی کاربر جاری
+    const { data: myProfile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
 
-    localStorage.setItem('originalUserId', currentUser.id);
-    localStorage.setItem('originalUserRole', profile.role);
+    // ذخیره وضعیت واقعی در حافظه مرورگر
+    localStorage.setItem('impersonationActive', 'true');
+    localStorage.setItem('realUserId', user.id);
+    localStorage.setItem('realUserRole', myProfile.role);
+    
+    // ذخیره وضعیت جعلی (کسی که ادایش را در می‌آوریم)
     localStorage.setItem('impersonatedUserId', targetUserId);
+    localStorage.setItem('impersonatedRole', targetRole);
     localStorage.setItem('impersonatedUsername', targetUsername);
-    localStorage.setItem('impersonatedUserRole', targetRole);
 
-    const { error } = await supabase.from('impersonation_log').insert({
-        admin_id: currentUser.id,
-        target_user_id: targetUserId,
-        action: 'start_impersonation'
+    // ثبت لاگ در سرور
+    await supabase.from('action_logs').insert({
+        actor_id: user.id,
+        impersonated_user_id: targetUserId,
+        action_type: 'start_impersonation',
+        description: `شروع شبیه‌سازی کاربر ${targetUsername}`
     });
-    if (error) console.error('Failed to log impersonation start:', error);
 
-    if (targetRole === 'superadmin') {
-        window.location.href = 'superadmin.html';
-    } else if (targetRole === 'admin') {
-        window.location.href = 'admin.html';
-    } else {
-        alert('Invalid target role for impersonation.');
-        stopImpersonation();
-    }
+    // هدایت به صفحه مربوطه
+    redirectBasedOnRole(targetRole);
 }
 
-function stopImpersonation() {
-    const originalUserId = localStorage.getItem('originalUserId');
-    const originalUserRole = localStorage.getItem('originalUserRole');
+// پایان شبیه‌سازی: دکمه "خروج از حالت مشاهده"
+async function stopImpersonation() {
+    const realUserId = localStorage.getItem('realUserId');
+    const realUserRole = localStorage.getItem('realUserRole');
+    const targetUserId = localStorage.getItem('impersonatedUserId');
 
-    if (!originalUserId) return;
+    if (!realUserId) return;
 
-    // Log the event
-    supabase.from('impersonation_log').insert({
-        admin_id: originalUserId,
-        target_user_id: localStorage.getItem('impersonatedUserId'),
-        action: 'stop_impersonation'
-    }).then(({ error }) => {
-        if (error) console.error('Failed to log impersonation stop:', error);
+    // ثبت لاگ پایان
+    await supabase.from('action_logs').insert({
+        actor_id: realUserId,
+        impersonated_user_id: targetUserId,
+        action_type: 'stop_impersonation',
+        description: 'پایان شبیه‌سازی'
     });
 
-    localStorage.removeItem('originalUserId');
-    localStorage.removeItem('originalUserRole');
+    // پاک کردن حافظه
+    localStorage.removeItem('impersonationActive');
+    localStorage.removeItem('realUserId');
+    localStorage.removeItem('realUserRole');
     localStorage.removeItem('impersonatedUserId');
+    localStorage.removeItem('impersonatedRole');
     localStorage.removeItem('impersonatedUsername');
-    localStorage.removeItem('impersonatedUserRole');
 
-    if (originalUserRole === 'root') {
-        window.location.href = 'root.html';
-    } else if (originalUserRole === 'superadmin') {
-        window.location.href = 'superadmin.html';
-    } else {
-        window.location.href = 'index.html'; // Fallback
-    }
+    // بازگشت به پنل اصلی
+    redirectBasedOnRole(realUserRole);
 }
 
+// نمایش بنر بالای صفحه وقتی در حالت شبیه‌سازی هستیم
 function initImpersonationUI() {
-    const impersonatedUsername = localStorage.getItem('impersonatedUsername');
-    if (!impersonatedUsername) return;
+    const isImpersonating = localStorage.getItem('impersonationActive');
+    const targetName = localStorage.getItem('impersonatedUsername');
 
-    const banner = document.createElement('div');
-    banner.id = 'impersonation-banner';
-    banner.innerHTML = `
-        <span>شما در حال مشاهده به عنوان <strong>${impersonatedUsername}</strong> هستید.</span>
-        <button id="stop-impersonation-btn">پایان مشاهده</button>
-    `;
-    document.body.prepend(banner);
+    if (isImpersonating && targetName) {
+        const banner = document.createElement('div');
+        banner.style.cssText = `
+            background-color: #ff9800; color: white; padding: 10px; 
+            text-align: center; position: sticky; top: 0; z-index: 1000;
+            display: flex; justify-content: center; align-items: center; gap: 15px;
+            font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        `;
+        banner.innerHTML = `
+            <span>⚠️ شما در حال مشاهده پنل کاربر «${targetName}» هستید.</span>
+            <button id="stop-impersonation-btn" style="background: white; color: #e65100; border: none; padding: 5px 15px; border-radius: 4px; cursor: pointer;">خروج از مشاهده</button>
+        `;
+        document.body.prepend(banner);
 
-    document.getElementById('stop-impersonation-btn').addEventListener('click', stopImpersonation);
+        document.getElementById('stop-impersonation-btn').addEventListener('click', stopImpersonation);
+    }
 }
 
-async function logImpersonatedAction(action, details) {
-    const admin_id = localStorage.getItem('originalUserId');
-    const target_user_id = localStorage.getItem('impersonatedUserId');
+// تابع کمکی برای دریافت ID معتبر (اگر شبیه‌سازی باشد، ID هدف را می‌دهد، وگرنه ID خودمان)
+function getEffectiveUserId(currentUserId) {
+    const impersonatedId = localStorage.getItem('impersonatedUserId');
+    return impersonatedId ? impersonatedId : currentUserId;
+}
 
-    if (!admin_id || !target_user_id) {
-        // Not in an impersonation session, so do nothing.
-        return;
-    }
-
-    try {
-        const { error } = await supabase.from('impersonation_log').insert({
-            admin_id,
-            target_user_id,
-            action,
-            details: details || null
-        });
-        if (error) {
-            console.error('Failed to log impersonated action:', error);
-        }
-    } catch (e) {
-        console.error('Error in logImpersonatedAction:', e);
-    }
+function redirectBasedOnRole(role) {
+    if (role === 'root') window.location.href = 'root.html';
+    else if (role === 'superadmin') window.location.href = 'superadmin.html';
+    else if (role === 'admin') window.location.href = 'admin.html';
+    else if (role === 'institute') window.location.href = 'attendance.html';
 }
