@@ -5,94 +5,66 @@ document.addEventListener('DOMContentLoaded', () => {
     const errorMessage = document.getElementById('error-message');
     const loginButton = document.getElementById('login-button');
 
-    // بررسی می‌کند آیا کاربر از قبل وارد شده است یا خیر
-    async function checkExistingSession() {
-        const { data: { session }, error } = await supabase.auth.getSession();
+    // اگر کاربر قبلاً لاگین کرده، مستقیم بفرستش داخل
+    async function checkSession() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            handleRedirect(session.user.id);
+        }
+    }
 
-        if (error) {
-            console.error('خطا در بررسی نشست:', error);
+    async function handleRedirect(userId) {
+        loginButton.textContent = 'در حال انتقال...';
+        
+        // دریافت نقش کاربر از جدول پروفایل‌ها
+        const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .single();
+
+        if (error || !profile) {
+            errorMessage.textContent = 'خطا در دریافت اطلاعات کاربر.';
+            await supabase.auth.signOut();
             return;
         }
 
-        if (session) {
-            loginButton.disabled = true;
-            loginButton.textContent = 'در حال هدایت به پنل...';
-            await redirectToPanel(session.user.id);
+        // هدایت بر اساس نقش
+        switch (profile.role) {
+            case 'root': window.location.href = 'root.html'; break;
+            case 'superadmin': window.location.href = 'superadmin.html'; break;
+            case 'admin': window.location.href = 'admin.html'; break;
+            case 'institute': window.location.href = 'attendance.html'; break;
+            default: errorMessage.textContent = 'نقش کاربری نامعتبر است.';
         }
     }
 
-    // کاربر را بر اساس نقش به پنل مربوطه هدایت می‌کند
-    async function redirectToPanel(userId) {
-        try {
-            const { data: profile, error } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', userId)
-                .single();
-
-            if (error || !profile) {
-                throw error || new Error('پروفایل کاربری یافت نشد.');
-            }
-
-            switch (profile.role) {
-                case 'root':
-                    window.location.href = 'root.html';
-                    break;
-                case 'superadmin':
-                    window.location.href = 'superadmin.html';
-                    break;
-                case 'admin':
-                    window.location.href = 'admin.html';
-                    break;
-                case 'institute':
-                    window.location.href = 'attendance.html';
-                    break;
-                default:
-                    errorMessage.textContent = 'نقش کاربری شما تعریف نشده است.';
-            }
-        } catch (error) {
-            errorMessage.textContent = 'خطا در دریافت اطلاعات کاربری.';
-            console.error('خطای هدایت:', error);
-            await supabase.auth.signOut();
-            loginButton.disabled = false;
-            loginButton.textContent = 'ورود';
-        }
-    }
-
-    // مدیریت فرم ورود
-    loginForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const email = usernameInput.value; // در Supabase، نام کاربری همان ایمیل است
-        const password = passwordInput.value;
-
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorMessage.textContent = '';
         loginButton.disabled = true;
         loginButton.textContent = 'در حال بررسی...';
-        errorMessage.textContent = '';
 
-        try {
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email: email,
-                password: password,
-            });
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value.trim();
 
-            if (error) {
-                throw error;
-            }
+        // ساخت ایمیل سیستمی (چون سوپابیس ایمیل می‌خواهد)
+        const email = `${username}@system.bir`;
 
-            if (data.user) {
-                await redirectToPanel(data.user.id);
-            } else {
-                 errorMessage.textContent = "اطلاعات ورود نامعتبر است.";
-            }
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
 
-        } catch (error) {
-            console.error('خطای ورود:', error);
+        if (error) {
+            console.error('Login Error:', error);
             errorMessage.textContent = 'نام کاربری یا رمز عبور اشتباه است.';
             loginButton.disabled = false;
             loginButton.textContent = 'ورود';
+        } else {
+            handleRedirect(data.user.id);
         }
     });
 
-    // اجرای اولیه: بررسی نشست موجود
-    checkExistingSession();
+    checkSession();
 });
