@@ -1,243 +1,137 @@
 document.addEventListener('DOMContentLoaded', async () => {
-    // --- Authentication and Role Check ---
-    async function checkAuthAndRole() {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error || !session) {
-            window.location.href = 'index.html';
-            return null;
-        }
+    // --- بررسی دسترسی ---
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { window.location.href = 'index.html'; return; }
 
-        const user = session.user;
-        const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('role, username')
-            .eq('id', user.id)
-            .single();
-
-        if (profileError || !profile) {
-            console.error('Error fetching profile:', profileError);
-            await supabase.auth.signOut();
-            window.location.href = 'index.html';
-            return null;
-        }
-
-        if (profile.role !== 'root') {
-            alert('Access denied.');
-            await supabase.auth.signOut();
-            window.location.href = 'index.html';
-            return null;
-        }
-
-        return { user, profile };
+    // دریافت پروفایل
+    const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+    if (profile.role !== 'root') { 
+        alert('دسترسی غیرمجاز'); 
+        window.location.href = 'index.html'; 
+        return; 
     }
 
-    const authData = await checkAuthAndRole();
-    if (!authData) return;
+    // --- تنظیمات اولیه ---
+    document.getElementById('root-title').textContent = `پنل روت (${profile.username})`;
+    initImpersonationUI(); // فعال‌سازی بنر شبیه‌سازی
 
-    const { user: currentUser, profile: userProfile } = authData;
-
-    // --- DOM Elements ---
     const dashboardContainer = document.getElementById('dashboard-container');
     const superadminListBody = document.getElementById('superadmin-list-body');
-    const loadingMessage = document.getElementById('loading-message');
-    const logoutButton = document.getElementById('logout-button');
-    const addSuperadminButton = document.getElementById('add-superadmin-button');
-
-    const addUserModal = document.getElementById('add-user-modal');
-    const addUserForm = document.getElementById('add-user-form');
-    const addUserStatus = document.getElementById('add-user-status');
-
-    const editUserModal = document.getElementById('edit-user-modal');
-    const editUserForm = document.getElementById('edit-user-form');
-    const editUserStatus = document.getElementById('edit-user-status');
-    const editModalTitle = document.getElementById('edit-modal-title');
-
-    document.querySelectorAll('.cancel-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            addUserModal.style.display = 'none';
-            editUserModal.style.display = 'none';
-        });
-    });
-
-    // --- Initial Setup ---
-    document.getElementById('root-title').textContent = `پنل کاربری روت (${userProfile.username})`;
-    logoutButton.addEventListener('click', async () => {
-        await supabase.auth.signOut();
-        window.location.href = 'index.html';
-    });
-
-    // --- Functions ---
-    async function loadDashboardData() {
-        try {
-            const { data: stats, error } = await supabase.functions.invoke('get-dashboard-stats');
-            if (error) throw error;
-
-            dashboardContainer.innerHTML = `
-                <div class="stat-card"><h3>Super Admins</h3><p class="highlight">${stats.superadminCount}</p></div>
-                <div class="stat-card"><h3>Admins</h3><p class="highlight">${stats.adminCount}</p></div>
-                <div class="stat-card"><h3>Institutions</h3><p class="highlight">${stats.institutionCount}</p></div>
-                <div class="stat-card"><h3>Active Users (7d)</h3><p class="highlight">${stats.activeUsers}</p></div>
-            `;
-        } catch (error) {
-            dashboardContainer.innerHTML = `<p class="error-message">Error loading dashboard: ${error.message}</p>`;
-        }
-    }
-
-    async function loadSuperadmins() {
-        loadingMessage.style.display = 'block';
-        superadminListBody.innerHTML = '';
-        try {
-            const impersonatedUserId = localStorage.getItem('impersonatedUserId');
-            const effectiveUserId = impersonatedUserId || currentUser.id;
-
-            const { data, error } = await supabase.functions.invoke('get-managed-users', {
-                body: { userId: effectiveUserId, targetRole: 'superadmin' }
-            });
-            if (error) throw error;
-
-            if (data.length === 0) {
-                superadminListBody.innerHTML = '<tr><td colspan="3">هیچ کاربر Superadmin یافت نشد.</td></tr>';
-            } else {
-                data.forEach(sa => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${sa.username}</td>
-                        <td>${new Date(sa.created_at).toLocaleDateString('fa-IR')}</td>
-                        <td class="actions">
-                            <button class="action-btn impersonate-btn" data-user-id="${sa.id}" data-username="${sa.username}" data-user-role="superadmin">ورود به حساب</button>
-                            <button class="action-btn edit-btn" data-user-id="${sa.id}" data-username="${sa.username}">ویرایش</button>
-                            <button class="action-btn delete-btn" data-user-id="${sa.id}" data-username="${sa.username}">حذف</button>
-                        </td>
-                    `;
-                    superadminListBody.appendChild(row);
-                });
-            }
-        } catch (error) {
-            superadminListBody.innerHTML = `<tr><td colspan="3" class="error-message">خطا در بارگذاری لیست: ${error.message}</td></tr>`;
-        } finally {
-            loadingMessage.style.display = 'none';
-        }
-    }
-
-    // --- Event Listeners ---
-    addSuperadminButton.addEventListener('click', () => {
-        addUserForm.reset();
-        addUserStatus.textContent = '';
-        addUserModal.style.display = 'flex';
-    });
-
-    addUserForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('new-username').value.trim();
-        const password = document.getElementById('new-password').value.trim();
-        if (!username || !password) return;
-
-        addUserStatus.textContent = 'در حال ایجاد...';
-        addUserStatus.style.color = 'inherit';
-
-        try {
-            const impersonatedUserId = localStorage.getItem('impersonatedUserId');
-            const effectiveCreatorId = impersonatedUserId || currentUser.id;
-
-            const { data, error } = await supabase.functions.invoke('create-user', {
-                body: { username, password, creatorId: effectiveCreatorId }
-            });
-            if (error) throw error;
-
-            await logImpersonatedAction('create_user', { created_username: username, new_role: data.role });
-
-            addUserStatus.style.color = 'green';
-            addUserStatus.textContent = 'کاربر Superadmin با موفقیت ایجاد شد.';
-            setTimeout(() => {
-                addUserModal.style.display = 'none';
-                loadSuperadmins();
-                loadDashboardData();
-            }, 1500);
-
-        } catch (error) {
-            console.error('Error creating superadmin:', error);
-            addUserStatus.style.color = 'red';
-            addUserStatus.textContent = `Error: ${error.message}`;
-        }
-    });
-
-    superadminListBody.addEventListener('click', async (e) => {
-        const target = e.target.closest('button');
-        if (!target) return;
-
-        const userId = target.dataset.userId;
-        const username = target.dataset.username;
-
-        if (target.classList.contains('delete-btn')) {
-            if (confirm(`آیا از حذف کاربر '${username}' مطمئن هستید؟ این عمل غیرقابل بازگشت است.`)) {
-                try {
-                    const { error } = await supabase.functions.invoke('delete-user', {
-                        body: { userId, requesterId: currentUser.id }
-                    });
-                    if (error) throw error;
-
-                    await logImpersonatedAction('delete_user', { deleted_username: username });
-
-                    alert('کاربر با موفقیت حذف شد.');
-                    loadSuperadmins();
-                    loadDashboardData();
-                } catch (error) {
-                    alert(`خطا در حذف کاربر: ${error.message}`);
-                    console.error('Delete error:', error);
-                }
-            }
-        }
-
-        if (target.classList.contains('edit-btn')) {
-            editUserForm.reset();
-            editUserStatus.textContent = '';
-            editModalTitle.textContent = `ویرایش کاربر: ${username}`;
-            editUserForm.querySelector('#edit-user-id').value = userId;
-            editUserModal.style.display = 'flex';
-        }
-
-        if (target.classList.contains('impersonate-btn')) {
-            const userRole = target.dataset.userRole;
-            startImpersonation(userId, username, userRole);
-        }
-    });
-
-    editUserForm.addEventListener('submit', async(e) => {
-        e.preventDefault();
-        const userId = document.getElementById('edit-user-id').value;
-        const newPassword = document.getElementById('edit-password').value;
-
-        if (!newPassword) {
-            editUserStatus.textContent = 'لطفا رمز عبور جدید را وارد کنید.';
+    const addModal = document.getElementById('add-user-modal');
+    
+    // --- دریافت آمار داشبورد ---
+    async function loadStats() {
+        dashboardContainer.innerHTML = '<p>در حال دریافت آمار...</p>';
+        const { data, error } = await supabase.functions.invoke('get-dashboard-stats');
+        
+        if (error) {
+            dashboardContainer.innerHTML = `<p class="error">خطا: ${error.message}</p>`;
             return;
         }
 
-        editUserStatus.textContent = 'در حال بروزرسانی...';
-        editUserStatus.style.color = 'inherit';
+        dashboardContainer.innerHTML = `
+            <div class="stat-card"><h3>مدیران ارشد (Superadmin)</h3><p class="highlight">${data.superadminCount}</p></div>
+            <div class="stat-card"><h3>مدیران میانی (Admin)</h3><p class="highlight">${data.adminCount}</p></div>
+            <div class="stat-card"><h3>موسسات</h3><p class="highlight">${data.institutionCount}</p></div>
+            <div class="stat-card"><h3>کل اعضای فعال</h3><p class="highlight">${data.activeUsers}</p></div>
+        `;
+    }
 
-        try {
-            const { error } = await supabase.functions.invoke('update-user-password', {
-                body: { userId, newPassword, requesterId: currentUser.id }
-            });
-            if (error) throw error;
+    // --- دریافت لیست سوپرادمین‌ها ---
+    async function loadSuperadmins() {
+        superadminListBody.innerHTML = '<tr><td colspan="3">در حال بارگذاری...</td></tr>';
+        
+        // اگر در حال شبیه‌سازی هستیم، ID آن شخص را بفرست، وگرنه ID خودمان
+        const effectiveId = getEffectiveUserId(session.user.id);
 
-            await logImpersonatedAction('update_password', { target_user_id: userId });
+        const { data, error } = await supabase.functions.invoke('get-managed-users', {
+            body: { userId: effectiveId, targetRole: 'superadmin' }
+        });
 
-            editUserStatus.style.color = 'green';
-            editUserStatus.textContent = 'رمز عبور با موفقیت بروزرسانی شد.';
-            setTimeout(() => {
-                editUserModal.style.display = 'none';
-            }, 1500);
-
-        } catch (error) {
-            console.error('Password update error:', error);
-            editUserStatus.style.color = 'red';
-            editUserStatus.textContent = `Error: ${error.message}`;
+        if (error) {
+            superadminListBody.innerHTML = `<tr><td colspan="3">خطا: ${error.message}</td></tr>`;
+            return;
         }
+
+        superadminListBody.innerHTML = '';
+        if (data.length === 0) {
+            superadminListBody.innerHTML = '<tr><td colspan="3">موردی یافت نشد.</td></tr>';
+            return;
+        }
+
+        data.forEach(user => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${user.username}</td>
+                <td>${new Date(user.created_at).toLocaleDateString('fa-IR')}</td>
+                <td class="actions">
+                    <button class="impersonate-btn" onclick="startImpersonation('${user.id}', '${user.username}', 'superadmin')">ورود به پنل</button>
+                    <button class="delete-btn" onclick="deleteUser('${user.id}')">حذف</button>
+                </td>
+            `;
+            superadminListBody.appendChild(row);
+        });
+    }
+
+    // --- ایجاد کاربر جدید ---
+    document.getElementById('add-user-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        const status = document.getElementById('add-user-status');
+        
+        const username = document.getElementById('new-username').value;
+        const password = document.getElementById('new-password').value;
+        const effectiveId = getEffectiveUserId(session.user.id);
+
+        btn.disabled = true;
+        status.textContent = 'در حال ساخت کاربر...';
+
+        const { data, error } = await supabase.functions.invoke('create-user', {
+            body: { username, password, creatorId: effectiveId }
+        });
+
+        if (error) {
+            status.style.color = 'red';
+            status.textContent = 'خطا: ' + error.message;
+        } else {
+            status.style.color = 'green';
+            status.textContent = 'کاربر با موفقیت ساخته شد!';
+            setTimeout(() => {
+                addModal.style.display = 'none';
+                e.target.reset();
+                status.textContent = '';
+                loadSuperadmins(); // رفرش لیست
+                loadStats(); // رفرش آمار
+            }, 1500);
+        }
+        btn.disabled = false;
     });
 
-    // --- Initial Load ---
-    initImpersonationUI();
-    loadDashboardData();
+    // --- حذف کاربر ---
+    window.deleteUser = async (targetId) => {
+        if (!confirm('آیا مطمئن هستید؟ حذف کاربر غیرقابل بازگشت است.')) return;
+
+        const { error } = await supabase.functions.invoke('delete-user', {
+            body: { userId: targetId, requesterId: session.user.id }
+        });
+
+        if (error) alert('خطا در حذف: ' + error.message);
+        else {
+            alert('کاربر حذف شد.');
+            loadSuperadmins();
+            loadStats();
+        }
+    };
+
+    // --- مدیریت مودال و خروج ---
+    document.getElementById('add-superadmin-button').onclick = () => addModal.style.display = 'flex';
+    document.querySelectorAll('.cancel-btn').forEach(b => b.onclick = () => addModal.style.display = 'none');
+    document.getElementById('logout-button').onclick = async () => {
+        await supabase.auth.signOut();
+        window.location.href = 'index.html';
+    };
+
+    // اجرای اولیه
+    loadStats();
     loadSuperadmins();
 });
