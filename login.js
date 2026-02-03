@@ -77,6 +77,14 @@ document.addEventListener('DOMContentLoaded', () => {
             loginButton.disabled = false;
             loginButton.textContent = 'ورود';
         } else {
+            // پاک کردن هرگونه اطلاعات شبیه‌سازی قبلی
+            localStorage.removeItem('impersonationActive');
+            localStorage.removeItem('realUserId');
+            localStorage.removeItem('realUserRole');
+            localStorage.removeItem('impersonatedUserId');
+            localStorage.removeItem('impersonatedRole');
+            localStorage.removeItem('impersonatedUsername');
+
             // true یعنی: بله، این یک ورود جدید است، لاگش را ثبت کن
             validateAndRedirect(data.user.id, true);
         }

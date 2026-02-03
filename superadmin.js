@@ -24,8 +24,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadAdmins() {
         adminListBody.innerHTML = '<tr><td colspan="4">در حال بارگذاری...</td></tr>';
-        const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
-        const { data, error } = await supabase.functions.invoke('get-managed-users', { body: { userId: effectiveId, targetRole: 'admin' } });
+        const impData = getImpersonationData();
+        const { data, error } = await supabase.functions.invoke('get-managed-users', {
+            body: {
+                impersonatedUserId: impData.impersonatedUserId,
+                targetRole: 'admin'
+            }
+        });
 
         if (error) { adminListBody.innerHTML = `<tr><td colspan="4">${error.message}</td></tr>`; return; }
         const activeAdmins = data.filter(u => u.status === 'active');
@@ -61,7 +66,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.deleteUser = async (id, name) => {
         if(!confirm(`حذف کامل ادمین «${name}»؟`)) return;
-        const { error } = await supabase.functions.invoke('delete-user', { body: { userId: id, requesterId: session.user.id } });
+        const impData = getImpersonationData();
+        const { error } = await supabase.functions.invoke('delete-user', {
+            body: {
+                userId: id,
+                impersonatedUserId: impData.impersonatedUserId
+            }
+        });
         if(!error) loadAdmins(); else alert(error.message);
     };
 
@@ -69,8 +80,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.preventDefault();
         const username = document.getElementById('new-username').value;
         const password = document.getElementById('new-password').value;
-        const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
-        const { error } = await supabase.functions.invoke('create-user', { body: { username, password, creatorId: effectiveId } });
+        const impData = getImpersonationData();
+        const { error } = await supabase.functions.invoke('create-user', {
+            body: {
+                username,
+                password,
+                impersonatedUserId: impData.impersonatedUserId
+            }
+        });
         if(!error) { addUserModal.style.display = 'none'; loadAdmins(); } else alert(error.message);
     });
 
@@ -84,8 +101,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.preventDefault();
         const id = document.getElementById('edit-user-id').value;
         const pass = document.getElementById('edit-password').value;
-        const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
-        const { error } = await supabase.functions.invoke('update-user-password', { body: { userId: id, newPassword: pass, requesterId: effectiveId } });
+        const impData = getImpersonationData();
+        const { error } = await supabase.functions.invoke('update-user-password', {
+            body: {
+                userId: id,
+                newPassword: pass,
+                impersonatedUserId: impData.impersonatedUserId
+            }
+        });
         if(!error) document.getElementById('edit-user-modal').style.display = 'none'; else alert(error.message);
     });
 

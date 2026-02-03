@@ -86,11 +86,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- ۴. افزودن اعضای جدید (چند خطی) ---
     addForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const names = document.getElementById('names-textarea').value.trim().split('\n');
-        const nids = document.getElementById('ids-textarea').value.trim().split('\n');
-        const mobiles = document.getElementById('mobiles-textarea').value.trim().split('\n');
+        const names = document.getElementById('names-textarea').value.trim().split('\n').filter(n => n.trim());
+        const nids = document.getElementById('ids-textarea').value.trim().split('\n').filter(n => n.trim());
+        const mobiles = document.getElementById('mobiles-textarea').value.trim().split('\n').filter(n => n.trim());
 
-        if (!names[0]) return;
+        if (names.length === 0) {
+            addStatus.style.color = 'red';
+            addStatus.textContent = 'حداقل نام یک عضو را وارد کنید.';
+            return;
+        }
+
+        if ((nids.length > 0 && nids.length !== names.length) || (mobiles.length > 0 && mobiles.length !== names.length)) {
+            if (!confirm('تعداد نام‌ها با تعداد کد ملی‌ها یا موبایل‌ها برابر نیست. آیا مطمئن هستید؟ (داده‌ها به ترتیب سطرها متناظر می‌شوند)')) {
+                return;
+            }
+        }
 
         addStatus.textContent = 'در حال افزودن...';
         
@@ -101,7 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             mobile: mobiles[index] ? mobiles[index].trim() : null,
             created_by: session.user.id,
             is_active: true
-        })).filter(m => m.full_name);
+        }));
 
         const { error } = await supabase.from('members').insert(newMembers);
 
@@ -109,6 +119,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             addStatus.style.color = 'red';
             addStatus.textContent = 'خطا: ' + error.message;
         } else {
+            // ثبت لاگ
+            const impData = getImpersonationData();
+            await supabase.from('action_logs').insert({
+                actor_id: session.user.id,
+                impersonated_user_id: impData.impersonatedUserId,
+                action_type: 'add_members',
+                description: `افزودن ${newMembers.length} عضو جدید به موسسه`
+            });
+
             addStatus.style.color = 'green';
             addStatus.textContent = 'اعضا با موفقیت اضافه شدند.';
             addForm.reset();
