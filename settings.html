@@ -10,28 +10,32 @@
     <div class="container">
         <header class="page-header">
             <h2>تنظیمات سیستم</h2>
-            <a href="admin.html" class="back-link">بازگشت به داشبورد</a>
+            <a href="#" class="back-link">بازگشت</a>
         </header>
 
-        <div id="settings-container" class="card">
-            <h3>دسترسی‌های موسسات</h3>
-            <div class="setting-item">
-                <label for="allowMemberManagement">اجازه مدیریت اعضا (افزودن/حذف/ویرایش)</label>
-                <input type="checkbox" id="allowMemberManagement" class="toggle-switch">
+        <div class="settings-form">
+            <div class="form-group-check">
+                <input type="checkbox" id="allowMemberManagement">
+                <label for="allowMemberManagement">اجازه مدیریت اعضا توسط موسسات</label>
             </div>
-            <div class="setting-item">
-                <label for="allowUsernameChange">اجازه تغییر نام کاربری توسط خود موسسه</label>
-                <input type="checkbox" id="allowUsernameChange" class="toggle-switch">
+            <div class="form-group-check">
+                <input type="checkbox" id="allowUsernameChange">
+                <label for="allowUsernameChange">اجازه تغییر نام کاربری به زیرمجموعه‌ها</label>
             </div>
-            <div class="setting-item">
-                <label for="allowPasswordChange">اجازه تغییر رمز عبور توسط خود موسسه</label>
-                <input type="checkbox" id="allowPasswordChange" class="toggle-switch">
+            <div class="form-group-check">
+                <input type="checkbox" id="allowPasswordChange">
+                <label for="allowPasswordChange">اجازه تغییر رمز عبور به زیرمجموعه‌ها</label>
             </div>
-            <button id="save-settings-btn" style="margin-top: 20px;">ذخیره تنظیمات</button>
-            <p id="settings-status" class="error-message"></p>
+
+            <br>
+            <button id="save-settings-btn" class="save-btn">ذخیره تنظیمات</button>
+            <p id="settings-status"></p>
         </div>
     </div>
-    
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="impersonation.js"></script>
     <script src="settings.js"></script>
 </body>
 </html>

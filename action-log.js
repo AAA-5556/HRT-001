@@ -27,7 +27,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             .from('action_logs')
             .select(`
                 created_at, action_type, description,
-                actor:actor_id(username, role)
+                actor:actor_id(username, role),
+                impersonated:impersonated_user_id(username)
             `)
             .order('created_at', { ascending: false })
             .limit(100);
@@ -41,10 +42,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         logTableBody.innerHTML = '';
         logs.forEach(log => {
+            const actorName = log.actor ? log.actor.username : '?';
+            const impName = log.impersonated ? ` (به جای ${log.impersonated.username})` : '';
+
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${new Date(log.created_at).toLocaleString('fa-IR')}</td>
-                <td>${log.actor ? log.actor.username : '?'}</td>
+                <td>${actorName}${impName}</td>
                 <td>${log.actor ? log.actor.role : '?'}</td>
                 <td>${log.action_type}</td>
                 <td>${log.description || ''}</td>

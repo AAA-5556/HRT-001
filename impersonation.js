@@ -111,3 +111,15 @@ function redirectBasedOnRole(role) {
     else if (role === 'admin') window.location.href = 'admin.html';
     else if (role === 'institute') window.location.href = 'attendance.html';
 }
+
+function getImpersonationData() {
+    if (localStorage.getItem('impersonationActive') === 'true') {
+        return {
+            isImpersonating: true,
+            impersonatedUserId: localStorage.getItem('impersonatedUserId'),
+            impersonatedRole: localStorage.getItem('impersonatedRole'),
+            realUserId: localStorage.getItem('realUserId')
+        };
+    }
+    return { isImpersonating: false };
+}

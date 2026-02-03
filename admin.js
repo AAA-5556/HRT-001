@@ -39,10 +39,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // --- ۳. لود داشبورد ---
     async function loadDashboard() {
         dashboardContainer.innerHTML = '<p>در حال بارگذاری موسسات...</p>';
-        const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
+        const impData = getImpersonationData();
 
         const { data: institutions, error } = await supabase.functions.invoke('get-managed-users', {
-            body: { userId: effectiveId, targetRole: 'institute' }
+            body: { impersonatedUserId: impData.impersonatedUserId, targetRole: 'institute' }
         });
 
         if (error) { dashboardContainer.innerHTML = `<p class="error">${error.message}</p>`; return; }
@@ -115,9 +115,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.preventDefault();
         const username = document.getElementById('new-username').value;
         const password = document.getElementById('new-password').value;
-        const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
+        const impData = getImpersonationData();
         
-        const { error } = await supabase.functions.invoke('create-user', { body: { username, password, creatorId: effectiveId } });
+        const { error } = await supabase.functions.invoke('create-user', {
+            body: { username, password, impersonatedUserId: impData.impersonatedUserId }
+        });
         if(error) alert(error.message);
         else { addUserModal.style.display = 'none'; loadDashboard(); }
     });
@@ -132,9 +134,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.preventDefault();
         const id = document.getElementById('edit-user-id').value;
         const pass = document.getElementById('edit-password').value;
-        const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
+        const impData = getImpersonationData();
 
-        const { error } = await supabase.functions.invoke('update-user-password', { body: { userId: id, newPassword: pass, requesterId: effectiveId } });
+        const { error } = await supabase.functions.invoke('update-user-password', {
+            body: { userId: id, newPassword: pass, impersonatedUserId: impData.impersonatedUserId }
+        });
         if(error) alert(error.message);
         else document.getElementById('edit-user-modal').style.display = 'none';
     });

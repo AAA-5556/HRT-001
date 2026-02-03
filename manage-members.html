@@ -9,80 +9,62 @@
 <body>
     <div class="container">
         <header class="page-header">
-            <h2 id="manage-page-title">مدیریت اعضای موسسه...</h2>
-            <a href="admin.html" class="back-link">بازگشت به داشبورد</a>
+            <h2 id="manage-page-title">مدیریت اعضا</h2>
+            <a href="#" class="back-link">بازگشت</a>
         </header>
 
-        <div class="card">
-            <h3>افزودن اعضای جدید</h3>
-            <p class="guide-text">(توجه داشته باشد کدملی و شماره موبایل وارد شده در خط اول برای نامی که در خط اول هست ثبت خواهد شد )اطلاعات هر عضو را در یک خط جداگانه کپی و پیست کنید. هر کادر باید تعداد خطوط یکسانی داشته باشد.</p>
+        <section class="add-section">
+            <h3>افزودن اعضای جدید (دسته جمعی)</h3>
+            <p style="font-size: 0.9em; color: #666;">هر مورد را در یک خط جدید وارد کنید. ترتیب خطوط در هر سه جعبه باید یکسان باشد.</p>
             <form id="add-members-form">
-                <div class="multi-textarea-container">
-                    <div class="form-group">
-                        <label for="names-textarea">نام‌های کامل</label>
-                        <textarea id="names-textarea" rows="5" required></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="ids-textarea">کدهای ملی (اختیاری)</label>
-                        <textarea id="ids-textarea" rows="5"></textarea>
-                    </div>
-                    <div class="form-group">
-                        <label for="mobiles-textarea">شماره‌های موبایل (اختیاری)</label>
-                        <textarea id="mobiles-textarea" rows="5"></textarea>
-                    </div>
+                <div class="multi-input-row">
+                    <div class="form-group"><label>نام و نام خانوادگی</label><textarea id="names-textarea" rows="5" placeholder="نام اول&#10;نام دوم..." required></textarea></div>
+                    <div class="form-group"><label>کد ملی (اختیاری)</label><textarea id="ids-textarea" rows="5" placeholder="کد ملی اول&#10;کد ملی دوم..."></textarea></div>
+                    <div class="form-group"><label>موبایل (اختیاری)</label><textarea id="mobiles-textarea" rows="5" placeholder="موبایل اول&#10;موبایل دوم..."></textarea></div>
                 </div>
-                <button type="submit">افزودن اعضا</button>
+                <button type="submit" class="save-btn">افزودن همه اعضا</button>
+                <p id="add-status-message"></p>
             </form>
-            <p id="add-status-message" class="error-message"></p>
-        </div>
-        
-        <div id="edit-member-modal" class="modal-overlay" style="display: none;">
-            <div class="modal-content">
-                <h3>ویرایش اطلاعات عضو</h3>
-                <form id="edit-member-form">
-                    <input type="hidden" id="edit-member-id">
-                    <div class="form-group">
-                        <label for="edit-fullname">نام کامل</label>
-                        <input type="text" id="edit-fullname" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="edit-nationalid">کد ملی</label>
-                        <input type="text" id="edit-nationalid">
-                    </div>
-                    <div class="form-group">
-                        <label for="edit-mobile">شماره موبایل</label>
-                        <input type="text" id="edit-mobile">
-                    </div>
-                    <div class="modal-actions">
-                        <button type="submit">ذخیره تغییرات</button>
-                        <button type="button" id="cancel-member-edit">انصراف</button>
-                    </div>
-                </form>
-            </div>
+        </section>
+
+        <hr class="section-divider">
+
+        <div class="tab-buttons">
+            <button class="tab-button active" onclick="showTab('active')">اعضای فعال</button>
+            <button class="tab-button" onclick="showTab('inactive')">غیرفعال / بایگانی</button>
         </div>
 
-        <div class="card">
-            <h3>لیست اعضای فعال</h3>
+        <div id="active-tab" class="tab-content active">
             <table id="active-members-table">
-                <thead><tr><th>شناسه</th><th>نام کامل</th><th>کد ملی</th><th>موبایل</th><th>عملیات</th></tr></thead>
+                <thead><tr><th>ID</th><th>نام</th><th>کد ملی</th><th>موبایل</th><th>عملیات</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
 
-        <div class="card">
-            <h3>لیست اعضای حذف شده (غیرفعال)</h3>
+        <div id="inactive-tab" class="tab-content">
             <table id="inactive-members-table">
-                <thead><tr><th>شناسه</th><th>نام کامل</th><th>کد ملی</th><th>موبایل</th><th>عملیات</th></tr></thead>
+                <thead><tr><th>ID</th><th>نام</th><th>کد ملی</th><th>موبایل</th><th>عملیات</th></tr></thead>
                 <tbody></tbody>
             </table>
         </div>
     </div>
-    
-    <!-- Supabase and dependencies -->
+
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
-
-    <!-- Page-specific script -->
+    <script src="impersonation.js"></script>
     <script src="manage-members.js"></script>
+    <script>
+        function showTab(type) {
+            document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            if(type === 'active') {
+                document.querySelector('.tab-button:nth-child(1)').classList.add('active');
+                document.getElementById('active-tab').classList.add('active');
+            } else {
+                document.querySelector('.tab-button:nth-child(2)').classList.add('active');
+                document.getElementById('inactive-tab').classList.add('active');
+            }
+        }
+    </script>
 </body>
 </html>

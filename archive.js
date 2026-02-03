@@ -21,14 +21,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- لود لیست ---
     const archiveTableBody = document.getElementById('archive-table-body');
-    const effectiveId = isImpersonating ? localStorage.getItem('impersonatedUserId') : session.user.id;
 
     async function loadArchives() {
         archiveTableBody.innerHTML = '<tr><td colspan="4">در حال بارگذاری...</td></tr>';
         
+        const impData = getImpersonationData();
         // دریافت تمام زیرمجموعه‌های من
         const { data: list, error } = await supabase.functions.invoke('get-managed-users', {
-            body: { userId: effectiveId, targetRole: targetChildRole }
+            body: { impersonatedUserId: impData.impersonatedUserId, targetRole: targetChildRole }
         });
 
         if (error) {

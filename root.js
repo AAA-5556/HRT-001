@@ -25,7 +25,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadStats() {
         dashboardContainer.innerHTML = '<p>در حال دریافت آمار...</p>';
-        const { data, error } = await supabase.functions.invoke('get-dashboard-stats');
+        const impData = getImpersonationData();
+        const { data, error } = await supabase.functions.invoke('get-dashboard-stats', {
+            body: { impersonatedUserId: impData.impersonatedUserId }
+        });
         if (error) { dashboardContainer.innerHTML = `<p class="error">${error.message}</p>`; return; }
         dashboardContainer.innerHTML = `
             <div class="stat-card"><h3>Superadmins</h3><p class="highlight">${data.superadminCount}</p></div>
@@ -37,7 +40,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadSuperadmins() {
         superadminListBody.innerHTML = '<tr><td colspan="3">در حال بارگذاری...</td></tr>';
-        const { data, error } = await supabase.functions.invoke('get-managed-users', { body: { userId: session.user.id, targetRole: 'superadmin' } });
+        const impData = getImpersonationData();
+        const { data, error } = await supabase.functions.invoke('get-managed-users', {
+            body: {
+                impersonatedUserId: impData.impersonatedUserId,
+                targetRole: 'superadmin'
+            }
+        });
         if (error) { superadminListBody.innerHTML = `<tr><td colspan="3">خطا: ${error.message}</td></tr>`; return; }
 
         const activeUsers = data.filter(u => u.status === 'active');
@@ -68,7 +77,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     window.deleteUser = async (id, name) => {
         if (!confirm(`حذف کامل «${name}» و تمام زیرمجموعه‌ها؟`)) return;
-        const { error } = await supabase.functions.invoke('delete-user', { body: { userId: id, requesterId: session.user.id } });
+        const impData = getImpersonationData();
+        const { error } = await supabase.functions.invoke('delete-user', {
+            body: {
+                userId: id,
+                impersonatedUserId: impData.impersonatedUserId
+            }
+        });
         if (!error) loadSuperadmins(); else alert(error.message);
     };
 
@@ -76,7 +91,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         e.preventDefault();
         const username = document.getElementById('new-username').value;
         const password = document.getElementById('new-password').value;
-        const { error } = await supabase.functions.invoke('create-user', { body: { username, password, creatorId: session.user.id } });
+        const impData = getImpersonationData();
+        const { error } = await supabase.functions.invoke('create-user', {
+            body: {
+                username,
+                password,
+                impersonatedUserId: impData.impersonatedUserId
+            }
+        });
         if (!error) { addModal.style.display = 'none'; loadSuperadmins(); loadStats(); } else alert(error.message);
     });
 

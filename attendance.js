@@ -9,16 +9,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         .eq('id', session.user.id)
         .single();
 
-    if (!profile || profile.role !== 'institute') {
-        // اگر نقش موسسه نیست، اخراج شود
-        await supabase.auth.signOut();
-        window.location.href = 'index.html';
-        return;
+    const impData = getImpersonationData();
+    const effectiveRole = impData.isImpersonating ? impData.impersonatedRole : profile?.role;
+    const effectiveUserId = impData.isImpersonating ? impData.impersonatedUserId : session.user.id;
+
+    if (!profile || effectiveRole !== 'institute') {
+        // اگر نقش موسسه نیست، و در حال شبیه‌سازی موسسه هم نیستیم، اخراج شود
+        if (!impData.isImpersonating) {
+            await supabase.auth.signOut();
+            window.location.href = 'index.html';
+            return;
+        }
     }
 
     // --- ۲. تنظیمات اولیه ---
-    const instituteId = session.user.id; // شناسه موسسه همان شناسه کاربر است
-    document.getElementById('institute-name').textContent = `پنل موسسه (${profile.username})`;
+    const instituteId = effectiveUserId; // شناسه موسسه هدف
+    const displayUsername = impData.isImpersonating ? localStorage.getItem('impersonatedUsername') : profile.username;
+    document.getElementById('institute-name').textContent = `پنل موسسه (${displayUsername})`;
+    if (typeof initImpersonationUI === 'function') initImpersonationUI();
     
     // اضافه کردن دکمه تیکت به هدر (اگر در HTML نیست، اینجا تزریق می‌شود)
     addTicketButtonToHeader();

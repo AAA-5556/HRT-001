@@ -3,50 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تاریخچه ورودها</title>
+    <title>تاریخچه ورود</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <header class="page-header">
-            <h2>تاریخچه ورودها</h2>
-            <a href="admin.html" class="back-link">بازگشت به داشبورد</a>
+            <h2>تاریخچه ورود کاربران</h2>
+            <a href="#" class="back-link">بازگشت</a>
         </header>
 
         <div class="controls">
-            <div class="form-group">
-                <label for="user-filter">فیلتر بر اساس نام کاربری:</label>
-                <input type="text" id="user-filter" placeholder="بخشی از نام کاربری را وارد کنید">
-            </div>
-            <div class="form-group">
-                <label for="role-filter">فیلتر بر اساس نقش:</label>
-                <select id="role-filter">
-                    <option value="all">همه نقش‌ها</option>
-                    <option value="admin">مدیر</option>
-                    <option value="institute">موسسه</option>
-                </select>
-            </div>
-            <div class="form-group">
-                 <button id="export-excel">دانلود اکسل</button>
-            </div>
+            <div class="form-group"><label for="user-filter">جستجوی کاربر:</label><input type="text" id="user-filter" placeholder="نام کاربری..."></div>
         </div>
 
-        <p id="loading-log">در حال بارگذاری تاریخچه...</p>
+        <p id="loading-log">در حال بارگذاری...</p>
         <table>
-            <thead>
-                <tr>
-                    <th>تاریخ و زمان</th>
-                    <th>نام کاربری</th>
-                    <th>نقش</th>
-                </tr>
-            </thead>
-            <tbody id="log-table-body">
-                </tbody>
+            <thead><tr><th>تاریخ و زمان</th><th>نام کاربری</th><th>نقش</th><th>وضعیت</th></tr></thead>
+            <tbody id="log-table-body"></tbody>
         </table>
         <div id="pagination-container" class="pagination"></div>
     </div>
 
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="impersonation.js"></script>
     <script src="login-log.js"></script>
 </body>
 </html>
