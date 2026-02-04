@@ -19,6 +19,8 @@
                         <hr style="margin: 5px 0;">
                         <a href="login-log.html">تاریخچه ورودها</a>
                         <a href="action-log.html">تاریخچه تغییرات</a>
+                        <hr style="margin: 5px 0;">
+                        <button id="broadcast-notif-btn" style="width:100%; border:none; background:none; text-align:right; padding:10px; cursor:pointer; font-family:inherit;">📢 ارسال اعلان برای موسسات</button>
                     </div>
                 </div>
             </div>
@@ -69,6 +71,18 @@
             <p id="modal-status-message" class="error-message"></p>
         </div>
     </div>
+    <div id="broadcast-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <h3>📢 ارسال اعلان برای تمام موسسات زیرمجموعه</h3>
+            <form id="broadcast-form">
+                <div class="form-group"><label>عنوان اعلان</label><input type="text" id="notif-title" required></div>
+                <div class="form-group"><label>متن پیام</label><textarea id="notif-message" rows="4" required></textarea></div>
+                <div class="modal-actions"><button type="submit">ارسال</button><button type="button" class="cancel-btn">انصراف</button></div>
+            </form>
+            <p id="broadcast-status" class="error-message"></p>
+        </div>
+    </div>
+
     <div id="add-user-modal" class="modal-overlay" style="display: none;">
         <div class="modal-content">
             <h3>افزودن کاربر جدید</h3>

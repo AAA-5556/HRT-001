@@ -103,6 +103,64 @@ function initImpersonationUI() {
 
         document.getElementById('stop-impersonation-btn').addEventListener('click', stopImpersonation);
     }
+    initNotificationsUI();
+}
+
+async function initNotificationsUI() {
+    const header = document.querySelector('.header-actions');
+    if (!header || document.getElementById('notif-container')) return;
+
+    const container = document.createElement('div');
+    container.id = 'notif-container';
+    container.style.cssText = 'position: relative; margin-right: 15px; cursor: pointer;';
+    container.innerHTML = `
+        <span id="notif-bell" style="font-size: 20px;">🔔</span>
+        <span id="notif-dot" style="position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; background: red; border-radius: 50%; display: none;"></span>
+        <div id="notif-dropdown" class="card-menu-dropdown" style="display: none; width: 250px; left: auto; right: 0; padding: 10px; font-weight: normal;">
+            <p style="text-align: center; color: #666;">اعلانی ندارید</p>
+        </div>
+    `;
+    header.prepend(container);
+
+    const bell = document.getElementById('notif-bell');
+    const dot = document.getElementById('notif-dot');
+    const dropdown = document.getElementById('notif-dropdown');
+
+    container.onclick = (e) => {
+        e.stopPropagation();
+        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+        if (dropdown.style.display === 'block') loadNotifications();
+    };
+
+    document.addEventListener('click', () => dropdown.style.display = 'none');
+
+    async function loadNotifications() {
+        const { data, error } = await supabase.functions.invoke('get-notifications');
+        if (error) return;
+
+        if (data.length === 0) {
+            dropdown.innerHTML = '<p style="text-align: center; color: #666;">اعلانی ندارید</p>';
+            dot.style.display = 'none';
+            return;
+        }
+
+        let hasUnread = false;
+        dropdown.innerHTML = data.map(n => {
+            if (!n.is_read) hasUnread = true;
+            return `
+                <div class="notif-item" style="border-bottom: 1px solid #eee; padding: 5px 0;">
+                    <strong style="display: block; font-size: 13px;">${n.title}</strong>
+                    <span style="font-size: 12px; color: #444;">${n.message}</span>
+                    <small style="display: block; font-size: 10px; color: #999;">${new Date(n.created_at).toLocaleString('fa-IR')}</small>
+                </div>
+            `;
+        }).join('');
+
+        dot.style.display = hasUnread ? 'block' : 'none';
+    }
+
+    // Check for unread on load
+    loadNotifications();
 }
 
 function redirectBasedOnRole(role) {

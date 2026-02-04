@@ -146,6 +146,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('logout-button').onclick = async () => { await supabase.auth.signOut(); window.location.href = 'index.html'; };
     document.querySelectorAll('.cancel-btn').forEach(b => b.onclick = () => document.querySelectorAll('.modal-overlay').forEach(m => m.style.display = 'none'));
 
+    // --- اعلان همگانی ---
+    const broadcastBtn = document.getElementById('broadcast-notif-btn');
+    const broadcastModal = document.getElementById('broadcast-modal');
+    const broadcastForm = document.getElementById('broadcast-form');
+
+    if (broadcastBtn) broadcastBtn.onclick = () => broadcastModal.style.display = 'flex';
+
+    broadcastForm.onsubmit = async (e) => {
+        e.preventDefault();
+        const title = document.getElementById('notif-title').value;
+        const message = document.getElementById('notif-message').value;
+        const status = document.getElementById('broadcast-status');
+
+        status.textContent = 'در حال ارسال...';
+        const impData = getImpersonationData();
+        const { error } = await supabase.functions.invoke('send-notification', {
+            body: { title, message, isBroadcast: true, impersonatedUserId: impData.impersonatedUserId }
+        });
+
+        if (!error) {
+            status.style.color = 'green';
+            status.textContent = 'ارسال شد.';
+            setTimeout(() => { broadcastModal.style.display = 'none'; broadcastForm.reset(); status.textContent = ''; }, 2000);
+        } else {
+            status.style.color = 'red';
+            status.textContent = 'خطا: ' + error.message;
+        }
+    };
+
     function addTicketButtonToHeader() {
         const actionsDiv = document.querySelector('.header-actions');
         if (actionsDiv && !document.getElementById('tickets-btn')) {
