@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // --- ۲. متغیرها ---
     let activeTicketId = null;
+    let currentTab = 'open'; // 'open' or 'closed'
     const ticketListEl = document.getElementById('ticket-list');
     const messagesBox = document.getElementById('messages-box');
     const inputArea = document.getElementById('input-area');
@@ -33,6 +34,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 receiver:recipient_id(username)
             `)
             .or(`creator_id.eq.${session.user.id},recipient_id.eq.${session.user.id}`)
+            .eq('status', currentTab)
             .order('updated_at', { ascending: false });
 
         if (error) {
@@ -67,8 +69,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function selectTicket(ticketId) {
         activeTicketId = ticketId;
         loadTickets(); // برای آپدیت استایل Active
-        inputArea.style.display = 'flex';
+
+        const { data: ticket } = await supabase.from('tickets').select('*').eq('id', ticketId).single();
+
+        document.getElementById('ticket-info-header').style.display = 'flex';
+        document.getElementById('active-ticket-subject').textContent = ticket.subject;
+
+        const statusBtn = document.getElementById('toggle-status-btn');
+        if (ticket.status === 'open') {
+            statusBtn.textContent = '❌ بستن تیکت';
+            statusBtn.style.background = '#ffc107';
+            inputArea.style.display = 'flex';
+        } else {
+            statusBtn.textContent = '🔄 بازگشایی';
+            statusBtn.style.background = '#28a745';
+            statusBtn.style.color = 'white';
+            inputArea.style.display = 'none';
+        }
+
+        statusBtn.onclick = async () => {
+            const newStatus = ticket.status === 'open' ? 'closed' : 'open';
+            const { error } = await supabase.from('tickets').update({ status: newStatus }).eq('id', ticketId);
+            if (!error) selectTicket(ticketId);
+        };
+
         messagesBox.innerHTML = '<p style="text-align:center;">در حال دریافت پیام‌ها...</p>';
+
+        // Mark as read
+        await supabase.from('ticket_messages')
+            .update({ is_read: true })
+            .eq('ticket_id', ticketId)
+            .neq('sender_id', session.user.id);
 
         const { data: msgs, error } = await supabase
             .from('ticket_messages')
@@ -86,11 +117,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isMe = m.sender_id === session.user.id;
             const bubble = document.createElement('div');
             bubble.className = `message-bubble ${isMe ? 'msg-me' : 'msg-other'}`;
-            bubble.textContent = m.message_body;
+
+            const time = new Date(m.created_at).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
+            const ticks = isMe ? (m.is_read ? ' <span style="color:#007bff;">✓✓</span>' : ' <span style="color:#999;">✓</span>') : '';
+
+            bubble.innerHTML = `
+                <div>${m.message_body}</div>
+                <small style="display:block; font-size:9px; text-align:left; margin-top:5px; opacity:0.7;">${time}${ticks}</small>
+            `;
             messagesBox.appendChild(bubble);
         });
 
-        // اسکرول به پایین
         messagesBox.scrollTop = messagesBox.scrollHeight;
     }
 
@@ -175,6 +212,53 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadTickets();
         }, 1000);
     });
+
+    // --- تب‌ها ---
+    document.getElementById('tab-open').onclick = () => {
+        currentTab = 'open';
+        document.getElementById('tab-open').classList.add('active');
+        document.getElementById('tab-closed').classList.remove('active');
+        loadTickets();
+    };
+    document.getElementById('tab-closed').onclick = () => {
+        currentTab = 'closed';
+        document.getElementById('tab-closed').classList.add('active');
+        document.getElementById('tab-open').classList.remove('active');
+        loadTickets();
+    };
+
+    // --- دفترچه تلفن ---
+    async function loadAddressBook() {
+        const listEl = document.getElementById('contacts-list');
+        const { data, error } = await supabase.functions.invoke('get-address-book');
+        if (error) { listEl.innerHTML = 'خطا در لود'; return; }
+
+        let html = '';
+        if (data.hierarchical.length > 0) {
+            html += '<strong>سازمانی:</strong>';
+            data.hierarchical.forEach(c => {
+                html += `<div class="contact-item" onclick="setTarget('${c.username}')">${c.username} (${getRoleFarsi(c.role)})</div>`;
+            });
+        }
+        if (data.custom.length > 0) {
+            html += '<br><strong>شخصی:</strong>';
+            data.custom.forEach(c => {
+                html += `<div class="contact-item" onclick="setTarget('${c.contact.username}')">${c.contact.username} ${c.notes ? `<small>(${c.notes})</small>` : ''}</div>`;
+            });
+        }
+        listEl.innerHTML = html || 'مخاطبی یافت نشد';
+    }
+
+    window.setTarget = (username) => {
+        document.getElementById('target-username').value = username;
+    };
+
+    function getRoleFarsi(role) {
+        const map = { root: 'مدیر کل', superadmin: 'سوپر ادمین', admin: 'ادمین', institute: 'موسسه' };
+        return map[role] || role;
+    }
+
+    document.getElementById('new-ticket-btn').addEventListener('click', loadAddressBook);
 
     loadTickets();
 });
