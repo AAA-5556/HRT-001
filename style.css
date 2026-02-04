@@ -592,3 +592,114 @@ th {
     justify-content: center;
     align-items: center;
 }
+
+/* Ticketing Styles */
+.tickets-container {
+    max-width: 1000px;
+}
+
+.tickets-layout {
+    display: flex;
+    gap: 20px;
+    height: 500px;
+    margin-top: 20px;
+}
+
+.tickets-sidebar {
+    flex: 1;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.new-ticket-btn {
+    padding: 15px;
+    border-radius: 0;
+    background-color: #28a745;
+}
+
+.ticket-list {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.ticket-item {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.ticket-item:hover { background: #f8f9fa; }
+.ticket-item.active { background: #e7f1ff; border-right: 4px solid #007bff; }
+
+.ticket-content {
+    flex: 2;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+}
+
+.messages-box {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background: #fdfdfd;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.message-bubble {
+    max-width: 80%;
+    padding: 10px 15px;
+    border-radius: 15px;
+    position: relative;
+    font-size: 14px;
+}
+
+.msg-me {
+    align-self: flex-end;
+    background: #007bff;
+    color: white;
+    border-bottom-right-radius: 2px;
+}
+
+.msg-other {
+    align-self: flex-start;
+    background: #e9ecef;
+    color: #333;
+    border-bottom-left-radius: 2px;
+}
+
+.message-input-area {
+    padding: 15px;
+    border-top: 1px solid #eee;
+    display: flex;
+    gap: 10px;
+}
+
+.message-input-area textarea {
+    height: 45px;
+    resize: none;
+}
+
+.message-input-area button {
+    width: 80px;
+}
+
+.contact-item {
+    padding: 8px;
+    border-bottom: 1px solid #f9f9f9;
+    cursor: pointer;
+}
+.contact-item:hover { background: #f1f1f1; }
+
+.empty-state {
+    text-align: center;
+    color: #999;
+    margin-top: 100px;
+}
